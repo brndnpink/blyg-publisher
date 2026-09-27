@@ -22,8 +22,11 @@ jobs:
           node-version: 24
           cache: npm
 
+      # npm ci rejects this lockfile on Linux: npm 11 on macOS writes some
+      # Linux/Windows-only optional entries without versions. npm install
+      # repairs them and still follows the lockfile's pinned versions.
       - name: Install
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Check the tag matches manifest.json
         run: |

@@ -11,6 +11,8 @@ import { scan, type Denylist, type Flag } from "./scan";
 export interface NoteInput {
 	/** Vault-relative path, e.g. "7 - Blyg/fragments/Some note.md". */
 	path: string;
+	/** The note's name as Obsidian shows it (filename without .md). */
+	basename?: string;
 	/** The whole file, frontmatter included. */
 	text: string;
 	/** Parsed frontmatter (Obsidian's metadata cache supplies it). */
@@ -21,8 +23,10 @@ export interface CheckResult {
 	/** Set only when the note is opted in and in the right place; null otherwise. */
 	kind: "fragment" | "thread" | null;
 	id: string | null;
-	/** What would be published: cleaned, links rewritten. */
+	/** What would be published: cleaned, links rewritten (threads start with their title heading). */
 	publicMarkdown: string;
+	/** Public title: blyg_title if set, else the note's name; for threads, their own leading heading if they have one. */
+	title: string;
 	/** Anything here blocks publishing. */
 	problems: Problem[];
 	/** Must each be confirmed by the author before publishing (rule 6). */
@@ -39,7 +43,7 @@ export function checkNote(note: NoteInput, vault: VaultView, denylist: Denylist)
 	// Rule 1: location and opt-in.
 	if (!isPublishableNotePath(note.path)) {
 		problems.push({ rule: 1, message: "This note is outside 7 - Blyg. Only notes in that folder can be published." });
-		return { kind: null, id: null, publicMarkdown: "", problems, flags: [], warnings };
+		return { kind: null, id: null, publicMarkdown: "", title: "", problems, flags: [], warnings };
 	}
 	if (fm.blyg !== "publish") {
 		problems.push({ rule: 1, message: 'Not marked for publishing (needs "blyg: publish" in its properties).' });
@@ -51,7 +55,7 @@ export function checkNote(note: NoteInput, vault: VaultView, denylist: Denylist)
 	if (rawId !== undefined && rawId !== null && rawId !== "" && (typeof rawId !== "string" || !isValidId(rawId))) {
 		problems.push({ rule: 1, message: "blyg_id has been edited and is no longer valid. Restore it from the ledger." });
 	}
-	if (problems.length) return { kind: null, id, publicMarkdown: "", problems, flags: [], warnings };
+	if (problems.length) return { kind: null, id, publicMarkdown: "", title: "", problems, flags: [], warnings };
 
 	// Rules 7 and 8: body only, hidden comments removed.
 	const { body } = splitFrontmatter(note.text);
@@ -64,13 +68,28 @@ export function checkNote(note: NoteInput, vault: VaultView, denylist: Denylist)
 	const links = processLinks(cleaned.markdown, kind!, note.path, vault);
 	problems.push(...links.problems);
 
-	// Rule 6.
-	const flags = scan(links.markdown, denylist);
+	// The title is public text too.
+	const fallback = note.basename ?? note.path.split("/").pop()!.replace(/\.md$/, "");
+	let title = (typeof fm.blyg_title === "string" && fm.blyg_title.trim() ? fm.blyg_title : fallback).replace(/\s+/g, " ").trim();
+	let markdown = links.markdown;
+	if (kind === "thread" && markdown.trim() !== "") {
+		const firstLine = markdown.split("\n").find((l) => l.trim() !== "") ?? "";
+		const heading = /^#{1,6}\s+(.+?)\s*#*\s*$/.exec(firstLine);
+		if (heading) title = heading[1].trim();
+		else markdown = `# ${title.replace(/^#+\s*/, "")}\n\n${markdown}`;
+	}
+	if (/\[\[|\]\]|obsidian:\/\//i.test(title)) {
+		problems.push({ rule: 3, message: `The title "${title}" contains link syntax. Set a plain blyg_title property.` });
+	}
+	if (title.length > 200) problems.push({ rule: 7, message: "The title is over 200 characters. Set a shorter blyg_title property." });
+
+	// Rule 6: scan the title and the text.
+	const flags = [...scan(title, denylist).map((f) => ({ ...f, line: 0, excerpt: `Title: ${f.excerpt}` })), ...scan(markdown, denylist)];
 
 	if (links.markdown.trim() === "") problems.push({ rule: 7, message: "Nothing to publish: the note is empty after cleaning." });
-	warnings.push(...syntaxWarnings(links.markdown));
+	warnings.push(...syntaxWarnings(markdown));
 
-	return { kind, id, publicMarkdown: links.markdown, problems, flags, warnings };
+	return { kind, id, publicMarkdown: markdown, title, problems, flags, warnings };
 }
 
 /** Obsidian conveniences that render differently on the public site. */

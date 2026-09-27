@@ -2,6 +2,8 @@
 
 import { App, ButtonComponent, Modal, Notice, sanitizeHTMLToDom, Setting } from "obsidian";
 import { latestVersion } from "./core/ledger";
+import { pagePath } from "./core/surfaces";
+import type { LedgerItem } from "./core/types";
 import { renderMarkdown } from "./core/markdown";
 import { resolveThread } from "./core/transclusion";
 import { diffText } from "./diff";
@@ -47,7 +49,9 @@ export class PublishModal extends Modal {
 		const cols = contentEl.createDiv({ cls: "blyg-cols" });
 		const pub = cols.createDiv({ cls: "blyg-pane" });
 		pub.createEl("h4", { text: "Exactly what the public will see" });
-		pub.createDiv({ cls: "blyg-public" }).append(sanitizeHTMLToDom(html));
+		const pubBody = pub.createDiv({ cls: "blyg-public" });
+		if (kind === "fragment") pubBody.createEl("h2", { cls: "blyg-public-title", text: check.title });
+		pubBody.append(sanitizeHTMLToDom(html));
 
 		const changes = cols.createDiv({ cls: "blyg-pane" });
 		const live = latest && latest.kind !== "withdrawn" ? latest : null;
@@ -55,7 +59,13 @@ export class PublishModal extends Modal {
 		const diffEl = changes.createDiv({ cls: "blyg-diff" });
 		if (live) {
 			const parts = diffText(idsToNames(live.content_md, ctx.index), idsToNames(check.publicMarkdown, ctx.index));
-			if (!parts.some((p) => p.type !== "same")) {
+			if (kind === "fragment" && (live.title ?? "") !== check.title) {
+				const t = diffEl.createDiv({ cls: "blyg-tiny" });
+				t.createSpan({ text: "Title: " });
+				if (live.title) t.createEl("del", { text: live.title });
+				t.createEl("ins", { text: check.title });
+			}
+			if (!parts.some((p) => p.type !== "same") && (live.title ?? "") === check.title) {
 				diffEl.createSpan({ text: "No text changes. Embedded fragments will update to their latest versions." });
 			}
 			for (const p of parts) diffEl.createEl(p.type === "add" ? "ins" : p.type === "del" ? "del" : "span", { text: p.text });
@@ -123,6 +133,7 @@ export class PinModal extends Modal {
 		app: App,
 		private plugin: BlygPublisherPlugin,
 		private status: Marked,
+		private initial?: number,
 	) {
 		super(app);
 	}
@@ -136,13 +147,14 @@ export class PinModal extends Modal {
 			this.contentEl.createEl("p", { text: "Every published version is already pinned." });
 			return;
 		}
-		let version = candidates[0].version;
+		let version = candidates.find((v) => v.version === this.initial)?.version ?? candidates[0].version;
 		let understood = false;
 		this.contentEl.createEl("p", {
 			text: "A pin is permanent. That exact version will stay public at its own address forever, even if you edit or withdraw this item later. There is no unpin.",
 		});
 		new Setting(this.contentEl).setName("Version").addDropdown((d) => {
 			for (const v of candidates) d.addOption(String(v.version), `v${v.version} · ${v.at.slice(0, 10)}${v.note ? ` · ${v.note}` : ""}`);
+			d.setValue(String(version));
 			d.onChange((val) => (version = Number(val)));
 		});
 		let btn: ButtonComponent;
@@ -383,6 +395,111 @@ export class ResetModal extends Modal {
 				await this.onConfirm();
 				this.close();
 			});
+	}
+
+	onClose() {
+		this.contentEl.empty();
+	}
+}
+
+/**
+ * A private look at one version from the ledger: its text, what changed from
+ * the version before, and whether (and where) it's public. Only the live
+ * version and pinned versions are public; the rest exist only in the ledger.
+ */
+export class VersionModal extends Modal {
+	constructor(
+		app: App,
+		private plugin: BlygPublisherPlugin,
+		private item: LedgerItem,
+		private version: number,
+	) {
+		super(app);
+	}
+
+	onOpen() {
+		this.render();
+	}
+
+	private render() {
+		const { contentEl, item } = this;
+		contentEl.empty();
+		this.modalEl.addClass("blyg-modal");
+		const ctx = this.plugin.context!;
+		const v = item.versions.find((x) => x.version === this.version)!;
+		const i = item.versions.indexOf(v);
+		const prev = i > 0 ? item.versions[i - 1] : null;
+		const latest = latestVersion(item);
+		const isLive = v === latest && v.kind !== "withdrawn";
+		const lastDeploy = this.plugin.deploys.at(-1)?.at;
+		const deployed = !!lastDeploy && lastDeploy !== "unknown" && v.at <= lastDeploy;
+		const name = v.title ?? latestVersion(item).title ?? ctx.index.byId.get(item.id)?.[0]?.basename ?? item.id;
+
+		this.setTitle(`v${v.version} of "${name}"`);
+		contentEl.createDiv({
+			cls: "blyg-sub",
+			text: `${item.authored === "thread" ? "Thread" : "Fragment"} · ${v.at.slice(0, 16).replace("T", " ")} UTC${v.note ? ` · "${v.note}"` : ""}`,
+		});
+
+		const status = contentEl.createEl("ul", { cls: "blyg-checks" });
+		if (v.kind === "withdrawn") status.createEl("li", { cls: "warn", text: "This version is the withdrawal. The item shows as withdrawn on your site." });
+		else if (isLive) status.createEl("li", { cls: "ok", text: deployed ? "Current version: public on your site." : "Current version: public after your next deploy." });
+		if (v.pinned) status.createEl("li", { cls: "ok", text: `Pinned: public permanently${deployed ? "" : " after your next deploy"}, at its own address.` });
+		if (!isLive && !v.pinned && v.kind !== "withdrawn") {
+			status.createEl("li", { cls: "warn", text: "Private: only in your ledger. Readers can't see older versions unless you pin them." });
+		}
+
+		const cols = contentEl.createDiv({ cls: "blyg-cols" });
+		const text = cols.createDiv({ cls: "blyg-pane" });
+		text.createEl("h4", { text: `v${v.version} as published` });
+		const body = text.createDiv({ cls: "blyg-public" });
+		if (v.kind === "withdrawn") body.createEl("p", { cls: "blyg-tiny", text: "(No text: withdrawn.)" });
+		else {
+			if (item.authored === "fragment" && v.title) body.createEl("h2", { cls: "blyg-public-title", text: v.title });
+			body.append(sanitizeHTMLToDom(v.content_html));
+		}
+
+		const changes = cols.createDiv({ cls: "blyg-pane" });
+		changes.createEl("h4", { text: prev ? `Changes from v${prev.version}` : "First version" });
+		const diffEl = changes.createDiv({ cls: "blyg-diff" });
+		if (prev) {
+			if ((prev.title ?? "") !== (v.title ?? "") && item.authored === "fragment") {
+				const t = diffEl.createDiv({ cls: "blyg-tiny" });
+				t.createSpan({ text: "Title: " });
+				if (prev.title) t.createEl("del", { text: prev.title });
+				if (v.title) t.createEl("ins", { text: v.title });
+			}
+			for (const part of diffText(idsToNames(prev.content_md, ctx.index), idsToNames(v.content_md, ctx.index))) {
+				diffEl.createEl(part.type === "add" ? "ins" : part.type === "del" ? "del" : "span", { text: part.text });
+			}
+		} else {
+			diffEl.createSpan({ text: idsToNames(v.content_md, ctx.index) });
+		}
+
+		const foot = contentEl.createDiv({ cls: "blyg-foot" });
+		const nav = foot.createDiv({ cls: "blyg-btn-row" });
+		new ButtonComponent(nav).setButtonText("← Older").setDisabled(i === 0).onClick(() => {
+			this.version = item.versions[i - 1].version;
+			this.render();
+		});
+		new ButtonComponent(nav).setButtonText("Newer →").setDisabled(i === item.versions.length - 1).onClick(() => {
+			this.version = item.versions[i + 1].version;
+			this.render();
+		});
+		foot.createSpan({ cls: "blyg-tiny" });
+		const publicUrl = ctx.origin && deployed ? (v.pinned ? `${ctx.origin}${pagePath(item)}v${v.version}/` : isLive ? `${ctx.origin}${pagePath(item)}` : null) : null;
+		if (publicUrl) {
+			const a = foot.createEl("a", { text: "View on site ↗", href: publicUrl });
+			a.setAttr("target", "_blank");
+		}
+		const s = this.plugin.status;
+		if (!v.pinned && v.kind !== "withdrawn" && s.state === "marked" && s.item?.id === item.id) {
+			new ButtonComponent(foot).setButtonText(`Pin v${v.version}…`).onClick(() => {
+				this.close();
+				new PinModal(this.app, this.plugin, s, v.version).open();
+			});
+		}
+		new ButtonComponent(foot).setButtonText("Close").onClick(() => this.close());
 	}
 
 	onClose() {

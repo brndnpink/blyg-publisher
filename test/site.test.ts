@@ -220,3 +220,19 @@ describe("upload command", () => {
 		expect(() => uploadCommand("/tmp/x", "My Site; rm -rf ~")).toThrow(/valid/);
 	});
 });
+
+describe("titled fragments on the site", () => {
+	it("show the title as the page heading and as the list link, but not inside embeds", async () => {
+		const t = clock();
+		const ids = idMaker();
+		let r = await mustPublish(emptyLedger(), { kind: "fragment", content_md: "A claim.", title: "On contingency" }, t(), ids);
+		const f = r.id;
+		r = await mustPublish(r.ledger, { kind: "thread", content_md: `# Essay\n\n![[${f}]]`, title: "Essay" }, t(), ids);
+		const files = buildSite(r.ledger, SITE, HOME, NOW);
+		expect(files.get(`blyg/f/${f}/index.html`)).toContain("<h1>On contingency</h1>");
+		expect(files.get("blyg/index.html")).toContain(`<span class="kind">fragment</span><a href="/blyg/f/${f}/">On contingency</a>`);
+		const thread = files.get(`blyg/t/${r.id}/index.html`)!;
+		expect(thread).toContain("<h1>Essay</h1>");
+		expect(thread).not.toContain("On contingency</h1>");
+	});
+});

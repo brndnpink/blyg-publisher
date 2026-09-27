@@ -40,6 +40,7 @@ export function formatDate(iso: string): string {
 
 /** A thread's title is its first line if that's a heading; otherwise an excerpt. */
 export function itemTitle(item: LedgerItem, v: VersionRecord = latestVersion(item)): string {
+	if (v.title) return v.title;
 	const heading = /^#{1,6}\s+(.+?)\s*#*\s*$/m.exec(v.content_md.split("\n").find((l) => l.trim() !== "") ?? "");
 	if (item.authored === "thread" && heading) return plainTextFromHtml(heading[1]).replace(/[*_`]/g, "");
 	return excerptFromHtml(v.content_html, 70) || (item.authored === "thread" ? "Untitled thread" : "Fragment");
@@ -133,7 +134,7 @@ ${changelog(item, p)}`;
 	const body =
 		item.authored === "thread"
 			? `<article class="thread">\n${byline}\n<div class="content">\n${content}</div>\n${genKey}\n</article>\n${changelog(item, p)}`
-			: `<article class="fragment">\n<div class="content">\n${content}</div>\n${byline}\n${genKey}\n</article>\n${changelog(item, p)}`;
+			: `<article class="fragment">\n${latest.title ? `<h1>${escapeHtml(latest.title)}</h1>\n` : ""}<div class="content">\n${content}</div>\n${byline}\n${genKey}\n</article>\n${changelog(item, p)}`;
 	return layout(site, p, { title: `${title} · ${site.title}`, body, head: `${jsonLink}\n` });
 }
 
@@ -143,7 +144,7 @@ export function pinnedPage(item: LedgerItem, v: VersionRecord, site: SiteConfig,
 	const body = `<p class="frozen">◆ Frozen copy: <strong>version ${v.version}</strong>, pinned. This text stays at this address unchanged.
 <a href="${p.mount}${pagePath(item)}">See the current version</a> · <a href="${p.mount}items/${item.id}/v${v.version}.json">JSON</a></p>
 <article class="${item.authored}">
-<p class="byline">${item.authored === "thread" ? "Thread" : "Fragment"} · v${v.version} · ${formatDate(v.at)}${v.note ? ` · “${escapeHtml(v.note)}”` : ""}</p>
+${item.authored === "fragment" && v.title ? `<h1>${escapeHtml(v.title)}</h1>\n` : ""}<p class="byline">${item.authored === "thread" ? "Thread" : "Fragment"} · v${v.version} · ${formatDate(v.at)}${v.note ? ` · “${escapeHtml(v.note)}”` : ""}</p>
 <div class="content">
 ${v.content_html}</div>
 </article>`;
@@ -165,8 +166,8 @@ export function listPage(ledger: Ledger, site: SiteConfig, p: Paths): string {
 		const meta = v.version > 1 ? `<span class="meta">v${v.version} · updated</span>` : "";
 		const pinned = item.versions.some((x) => x.pinned) ? ` <span class="pin">◆</span>` : "";
 		const main =
-			item.authored === "thread"
-				? `<span class="kind">thread</span><a href="${href}">${escapeHtml(itemTitle(item))}</a>`
+			item.authored === "thread" || v.title
+				? `<span class="kind">${item.authored}</span><a href="${href}">${escapeHtml(itemTitle(item))}</a>`
 				: `<span class="kind">fragment</span>${escapeHtml(excerptFromHtml(v.content_html, 280))} <a href="${href}" class="meta" aria-label="permalink">#</a>`;
 		return `<li><span class="date">${formatDate(v.at)}</span><span class="body">${main}${meta}${pinned}</span></li>`;
 	});

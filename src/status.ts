@@ -75,7 +75,7 @@ export async function noteStatus(app: App, file: TFile | null, ctx: Context): Pr
 
 	const text = await app.vault.cachedRead(file);
 	const view = makeVaultView(app, ctx.index, ctx.ledger, ctx.origin);
-	const check = checkNote({ path: file.path, text, frontmatter: fm }, view, ctx.denylist ?? { terms: [] });
+	const check = checkNote({ path: file.path, basename: file.basename, text, frontmatter: fm }, view, ctx.denylist ?? { terms: [] });
 
 	const blockers = [...ctx.global, ...check.problems.map((p) => (p.line ? `Line ${p.line}: ${p.message}` : p.message))];
 	const item = check.id ? (ctx.ledger.items[check.id] ?? null) : null;
@@ -91,7 +91,8 @@ export async function noteStatus(app: App, file: TFile | null, ctx: Context): Pr
 	}
 
 	const latest = item ? latestVersion(item) : null;
-	const edited = !latest || latest.kind === "withdrawn" || check.publicMarkdown !== latest.content_md;
+	const edited =
+		!latest || latest.kind === "withdrawn" || check.publicMarkdown !== latest.content_md || (latest.title ?? "") !== check.title;
 	let staleEmbeds = 0;
 	if (latest && latest.kind === "thread") {
 		for (const t of latest.transclusions ?? []) {

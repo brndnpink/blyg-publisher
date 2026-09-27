@@ -49,6 +49,7 @@ export function buildItemDocument(item: LedgerItem, site: SiteConfig) {
 		kind: latest.kind,
 		origin: site.origin,
 		page: pagePath(item),
+		...(!withdrawn && latest.title ? { title: latest.title } : {}),
 		author: itemAuthor(site),
 		created: item.created,
 		updated: latest.at,
@@ -78,6 +79,7 @@ export function buildPinnedDocument(item: LedgerItem, v: VersionRecord, site: Si
 		at: v.at,
 		note: v.note,
 		pinned: true,
+		...(v.title ? { title: v.title } : {}),
 		origin: site.origin,
 		author: itemAuthor(site),
 		content_md: v.content_md,
@@ -160,8 +162,8 @@ export function buildFeed(ledger: Ledger, site: SiteConfig, now: string): string
 				html += `<p><img src="${escapeXml(src)}" alt="${escapeXml(m.alt)}"></p>`;
 			}
 		}
-		const excerpt = withdrawn ? "" : excerptFromHtml(latest.content_html, 60);
-		const title = withdrawn ? "withdrawn" : version.note ? `${version.note} — ${excerpt}` : excerpt;
+		const label = withdrawn ? "" : latest.title || excerptFromHtml(latest.content_html, 60);
+		const title = withdrawn ? "withdrawn" : version.note ? `${version.note} — ${label}` : label;
 		return `    <item>
       <guid isPermaLink="false">blyg:${item.id}:v${version.version}</guid>
       <link>${o}${pagePath(item)}</link>

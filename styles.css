@@ -83,3 +83,8 @@
 .blyg-foot { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 14px; }
 .blyg-foot .blyg-tiny { flex: 1; }
 .blyg-log { max-height: 30vh; overflow: auto; font-size: var(--font-ui-smaller); background: var(--background-secondary); padding: 8px 10px; border-radius: var(--radius-s); white-space: pre-wrap; }
+.blyg-title { font-weight: var(--font-semibold); margin: 4px 0 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.blyg-public-title { font-family: Verdana, Geneva, sans-serif; font-size: 1.15em; margin: 0 0 8px; }
+.blyg-versions li.blyg-clickable { cursor: pointer; border-radius: var(--radius-s); }
+.blyg-versions li.blyg-clickable:hover { background: var(--background-modifier-hover); }
+.blyg-foot a { font-size: var(--font-ui-small); }

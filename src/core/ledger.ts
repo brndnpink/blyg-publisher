@@ -14,7 +14,7 @@ import type {
 	Transclusion,
 	VersionRecord,
 } from "./types";
-import { FRAGMENT_MAX_CHARS } from "./types";
+import { FRAGMENT_MAX_CHARS, TITLE_MAX_CHARS } from "./types";
 import { contentHash, isValidId, newId } from "./util";
 
 export function emptyLedger(): Ledger {
@@ -35,6 +35,7 @@ export interface PublishInput {
 	note?: string | null;
 	media?: Media[];
 	generated?: Generated[];
+	title?: string;
 }
 
 export interface PublishOk {
@@ -72,6 +73,10 @@ export async function publish(
 	if (input.content_md.trim() === "") {
 		errors.push("content is empty");
 	}
+	const title = input.title?.replace(/\s+/g, " ").trim() || undefined;
+	if (title && title.length > TITLE_MAX_CHARS) {
+		errors.push(`title is ${title.length} characters; the limit is ${TITLE_MAX_CHARS}`);
+	}
 
 	let content_html = "";
 	let transclusions: Transclusion[] | undefined;
@@ -104,7 +109,8 @@ export async function publish(
 			prev.content_html === content_html &&
 			JSON.stringify(prev.media) === JSON.stringify(media) &&
 			JSON.stringify(prev.transclusions) === JSON.stringify(transclusions) &&
-			JSON.stringify(prev.generated) === JSON.stringify(input.generated);
+			JSON.stringify(prev.generated) === JSON.stringify(input.generated) &&
+			prev.title === title;
 		if (same) return { ok: true, ledger, id: existing.id, changed: false, version: prev.version };
 	}
 
@@ -123,6 +129,7 @@ export async function publish(
 		media,
 		...(transclusions !== undefined ? { transclusions } : {}),
 		...(input.generated?.length ? { generated: input.generated } : {}),
+		...(title ? { title } : {}),
 	};
 
 	const next = structuredClone(ledger);

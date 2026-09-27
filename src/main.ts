@@ -1,7 +1,8 @@
 import { debounce, MarkdownView, normalizePath, Plugin, TFile, type Debouncer } from "obsidian";
 import { pin, publish, withdraw } from "./core/ledger";
 import { toIso } from "./core/util";
-import { DeployModal, notice, PinModal, PromoteModal, PublishModal, ResetModal, WithdrawModal } from "./modals";
+import { DeployModal, notice, PinModal, PromoteModal, PublishModal, ResetModal, VersionModal, WithdrawModal } from "./modals";
+import type { LedgerItem } from "./core/types";
 import { makePlanner } from "./deployflow";
 import { readDeploys, type DeployRecord } from "./deploys";
 import { fetchLive } from "./deploy/live";
@@ -186,7 +187,7 @@ export default class BlygPublisherPlugin extends Plugin {
 	async publishNote(previewed: Marked, note: string): Promise<boolean> {
 		await this.refresh();
 		const now = this.status;
-		if (now.state !== "marked" || now.file.path !== previewed.file.path || now.check.publicMarkdown !== previewed.check.publicMarkdown) {
+		if (now.state !== "marked" || now.file.path !== previewed.file.path || now.check.publicMarkdown !== previewed.check.publicMarkdown || now.check.title !== previewed.check.title) {
 			notice("The note changed after the preview. Nothing was published; review it again.");
 			return false;
 		}
@@ -196,7 +197,7 @@ export default class BlygPublisherPlugin extends Plugin {
 		}
 		const at = toIso();
 		const result = await this.store.update((ledger) =>
-			publish(ledger, { id: now.item?.id, kind: now.check.kind!, content_md: now.check.publicMarkdown, note: note || null }, at),
+			publish(ledger, { id: now.item?.id, kind: now.check.kind!, content_md: now.check.publicMarkdown, title: now.check.title, note: note || null }, at),
 		);
 		if (!result.ok) {
 			notice(`Nothing was published: ${result.errors.join("; ")}`, 10000);
@@ -237,6 +238,10 @@ export default class BlygPublisherPlugin extends Plugin {
 		notice(`Withdrawn (v${result.version}). Readers drop it after the next deploy.`);
 		await this.refresh();
 		return true;
+	}
+
+	openVersion(item: LedgerItem, version: number) {
+		new VersionModal(this.app, this, item, version).open();
 	}
 
 	deployPlanner() {

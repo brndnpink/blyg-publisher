@@ -208,3 +208,33 @@ describe("feed.xml", () => {
 		expect(xml).toContain(`<img src="${SITE.origin}media/a1.png" alt="a chart">`);
 	});
 });
+
+describe("titles in published files", () => {
+	it("item and pinned documents carry an extra title member; the feed uses it", async () => {
+		const t = clock();
+		const r = await mustPublish(emptyLedger(), { kind: "fragment", content_md: "A claim.", title: "On contingency" }, t(), idMaker());
+		const p = pin(r.ledger, r.id, 1);
+		if (!p.ok) throw new Error();
+		const files = buildSurfaces(p.ledger, SITE, NOW);
+		const doc = json(files, `items/${r.id}.json`);
+		expect(doc.title).toBe("On contingency");
+		expect(Object.keys(doc).indexOf("title")).toBe(Object.keys(doc).indexOf("page") + 1);
+		expect(doc.content_md).toBe("A claim.");
+		expect(json(files, `items/${r.id}/v1.json`).title).toBe("On contingency");
+		expect(files.get("feed.xml")).toContain("<title>On contingency</title>");
+	});
+	it("a title change alone is a new version", async () => {
+		const t = clock();
+		const a = await mustPublish(emptyLedger(), { kind: "fragment", content_md: "Same text." }, t(), idMaker());
+		const b = await mustPublish(a.ledger, { id: a.id, kind: "fragment", content_md: "Same text.", title: "Now titled" }, t());
+		expect(b.changed).toBe(true);
+		expect(b.version).toBe(2);
+	});
+	it("withdrawn items don't keep their title", async () => {
+		const t = clock();
+		const a = await mustPublish(emptyLedger(), { kind: "fragment", content_md: "x", title: "Gone" }, t(), idMaker());
+		const w = await withdraw(a.ledger, a.id, t());
+		if (!w.ok) throw new Error();
+		expect(json(buildSurfaces(w.ledger, SITE, NOW), `items/${a.id}.json`).title).toBeUndefined();
+	});
+});

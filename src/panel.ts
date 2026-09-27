@@ -75,6 +75,7 @@ export class BlygPanel extends ItemView {
 		if (latest?.kind === "withdrawn") state = `withdrawn (v${latest.version})`;
 		else if (latest) state = s.edited ? `v${latest.version} live · edited since` : `v${latest.version} live · up to date`;
 		row.createSpan({ cls: s.edited ? "blyg-state edited" : "blyg-state", text: state });
+		if (check.title) card.createDiv({ cls: "blyg-title", text: check.title, attr: { title: "Public title. Set a blyg_title property to change it." } });
 
 		if (check.kind === "fragment") {
 			const n = check.publicMarkdown.length;
@@ -120,7 +121,8 @@ export class BlygPanel extends ItemView {
 				li.createSpan({ cls: "draft", text: "draft" });
 			}
 			for (const v of [...item.versions].reverse()) {
-				const li = ul.createEl("li");
+				const li = ul.createEl("li", { cls: "blyg-clickable", attr: { title: `View v${v.version}` } });
+				li.onclick = () => this.plugin.openVersion(item, v.version);
 				li.createSpan({ cls: "v", text: `v${v.version}` });
 				li.createSpan({ cls: "d", text: `${v.at.slice(0, 10)}${v.kind === "withdrawn" ? " · withdrawn" : ""}${v.note ? ` · "${v.note}"` : ""}` });
 				li.createSpan({ cls: v.pinned ? "pin" : "", text: v.pinned ? "◆ pinned" : "" });

@@ -90,7 +90,7 @@ describe("Rule 2: embeds only of published Blyg fragments, own line, threads onl
 	it("turns an own-line embed of a published fragment into the protocol directive", () => {
 		const r = check(note("Intro.\n\n![[Published fragment]]\n\nOutro.", { kind: "thread" }));
 		expect(r.problems).toEqual([]);
-		expect(r.publicMarkdown).toBe(`Intro.\n\n![[${FRAG_ID}]]\n\nOutro.`);
+		expect(r.publicMarkdown).toBe(`# Test\n\nIntro.\n\n![[${FRAG_ID}]]\n\nOutro.`);
 	});
 	it("refuses embeds of private notes, unpublished notes, threads, missing notes, and partial embeds", () => {
 		const cases = [
@@ -113,7 +113,7 @@ describe("Rule 2: embeds only of published Blyg fragments, own line, threads onl
 	it("accepts a full-path embed of a published fragment", () => {
 		const r = check(note("![[7 - Blyg/fragments/Published fragment]]", { kind: "thread" }));
 		expect(r.problems).toEqual([]);
-		expect(r.publicMarkdown).toBe(`![[${FRAG_ID}]]`);
+		expect(r.publicMarkdown).toBe(`# Test\n\n![[${FRAG_ID}]]`);
 	});
 	it("refuses inline embeds and any embed in a fragment", () => {
 		expect(rules(check(note("see ![[Published fragment]] here", { kind: "thread" })))).toEqual([2]);
@@ -287,5 +287,35 @@ describe("warnings for Obsidian-only formatting", () => {
 	});
 	it("doesn't warn about lists", () => {
 		expect(check(note("- one\n- two\n- three")).warnings).toEqual([]);
+	});
+});
+
+describe("titles", () => {
+	it("fragments take the note's name as a title, without adding it to the text", () => {
+		const r = check(note("A claim.", { path: "7 - Blyg/fragments/On contingency.md" }));
+		expect(r.title).toBe("On contingency");
+		expect(r.publicMarkdown).toBe("A claim.");
+	});
+	it("threads get the title as a leading heading, unless they already start with one", () => {
+		const a = check(note("Body.", { kind: "thread", path: "7 - Blyg/threads/Turning points.md" }));
+		expect(a.publicMarkdown).toBe("# Turning points\n\nBody.");
+		expect(a.title).toBe("Turning points");
+		const b = check(note("## My own heading\n\nBody.", { kind: "thread", path: "7 - Blyg/threads/file name.md" }));
+		expect(b.publicMarkdown).toBe("## My own heading\n\nBody.");
+		expect(b.title).toBe("My own heading");
+	});
+	it("blyg_title overrides the note's name", () => {
+		const r = check(note("A claim.", { frontmatter: { blyg: "publish", blyg_kind: "fragment", blyg_title: "  A public   name " } }));
+		expect(r.title).toBe("A public name");
+	});
+	it("titles are scanned like the text", () => {
+		const terms = parseDenylist("Springfield");
+		const r = check(note("Nothing here.", { path: "7 - Blyg/fragments/Notes from Springfield.md" }), terms);
+		expect(r.flags).toHaveLength(1);
+		expect(r.flags[0].excerpt).toMatch(/^Title:/);
+	});
+	it("refuses link syntax and over-long titles", () => {
+		expect(rules(check(note("x", { frontmatter: { blyg: "publish", blyg_kind: "fragment", blyg_title: "See [[APUSH]]" } })))).toEqual([3]);
+		expect(rules(check(note("x", { frontmatter: { blyg: "publish", blyg_kind: "fragment", blyg_title: "t".repeat(201) } })))).toEqual([7]);
 	});
 });

@@ -7,6 +7,7 @@ export const NAMESPACE_URI = "https://blygger.org/ns/0.1"; // permanent spelling
 export const FEED_WINDOW = 50;
 /** §5.3: publishers SHOULD cap fragments at 2,000 characters. Enforced here as a hard limit. */
 export const FRAGMENT_MAX_CHARS = 2000;
+export const TITLE_MAX_CHARS = 200;
 
 export type AuthoredKind = "fragment" | "thread";
 export type Kind = AuthoredKind | "withdrawn";
@@ -46,6 +47,13 @@ export interface VersionRecord {
 	/** Threads (and withdrawn threads, as []) only. */
 	transclusions?: Transclusion[];
 	generated?: Generated[];
+	/**
+	 * Display title (the note's name, or blyg_title). Not a protocol field:
+	 * emitted as an extra "title" member, which readers ignore (§13.1).
+	 * Threads also carry it as a heading in content_md; fragments don't,
+	 * so embeds stay clean.
+	 */
+	title?: string;
 	pinned?: true;
 }
 

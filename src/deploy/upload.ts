@@ -2,6 +2,9 @@
 // own config outside the vault. The plugin never sees a token.
 
 import { spawn } from "child_process";
+import { mkdirSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 
 export interface UploadResult {
 	ok: boolean;
@@ -25,12 +28,19 @@ export function uploadCommand(dir: string, project: string): string {
  * Runs in a login shell so it finds the same node/npx as Terminal does.
  * CI=true keeps wrangler from waiting on interactive prompts (for example,
  * when it isn't logged in); it fails with a message instead.
+ * It runs in its own working folder: Obsidian's working directory is "/",
+ * where wrangler can't create its .wrangler cache. Usage metrics are off.
  */
 export function upload(dir: string, project: string, onOutput: (chunk: string) => void, timeoutMs = 5 * 60_000): Promise<UploadResult> {
 	const cmd = uploadCommand(dir, project);
 	return new Promise((resolveResult) => {
 		let output = "";
-		const child = spawn("/bin/zsh", ["-lc", cmd], { env: { ...process.env, CI: "true", FORCE_COLOR: "0", NO_COLOR: "1" } });
+		const cwd = join(tmpdir(), "blyg-publisher-wrangler");
+		mkdirSync(cwd, { recursive: true });
+		const child = spawn("/bin/zsh", ["-lc", cmd], {
+			cwd,
+			env: { ...process.env, CI: "true", WRANGLER_SEND_METRICS: "false", FORCE_COLOR: "0", NO_COLOR: "1" },
+		});
 		const take = (b: Buffer) => {
 			const s = b.toString().replace(/\x1b\[[0-9;]*m/g, "");
 			output += s;

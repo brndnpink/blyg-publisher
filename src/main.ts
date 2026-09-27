@@ -1,15 +1,5 @@
 import { Notice, Plugin, TFile, TFolder } from "obsidian";
-
-/**
- * The only folder this plugin may ever publish from. Deliberately a constant,
- * not a setting: widening it should take a code change, not a click.
- */
-export const PUBLISH_ROOT = "7 - Blyg";
-
-/** True only for Markdown files strictly inside PUBLISH_ROOT. */
-export function isInPublishRoot(path: string): boolean {
-	return path.startsWith(`${PUBLISH_ROOT}/`);
-}
+import { isPublishableNotePath, PUBLISH_ROOT } from "./safety/root";
 
 export default class BlygPublisherPlugin extends Plugin {
 	async onload() {
@@ -29,7 +19,7 @@ export default class BlygPublisherPlugin extends Plugin {
 
 		const notes = this.app.vault
 			.getMarkdownFiles()
-			.filter((f: TFile) => isInPublishRoot(f.path));
+			.filter((f: TFile) => isPublishableNotePath(f.path));
 		const optedIn = notes.filter(
 			(f) => this.app.metadataCache.getFileCache(f)?.frontmatter?.blyg === "publish",
 		);

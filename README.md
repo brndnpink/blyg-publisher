@@ -12,7 +12,8 @@ npm install
 npm run install-plugin   # type-check, build, copy into the vault's plugin folder
 ```
 
-Set `BLYG_VAULT=/path/to/vault` to install into a different vault.
+Set the target vault with `BLYG_VAULT=/path/to/vault` or a gitignored `local.config.json`
+containing `{"vault": "/path/to/vault"}`.
 
 ## Safety model
 

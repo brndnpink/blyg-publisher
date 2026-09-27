@@ -15,3 +15,6 @@ out/
 
 # Live samples fetched from other people's blygs, for local conformance tests only
 fixtures/live/
+
+# Personal paths for local scripts
+local.config.json

@@ -1,0 +1,84 @@
+/* Blyg Publisher. Uses Obsidian's theme variables so it matches any theme. */
+
+.blyg-panel { padding: 10px 12px; font-size: var(--font-ui-small); }
+.blyg-site { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+.blyg-card {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	padding: 10px 11px;
+	margin-bottom: 10px;
+	background: var(--background-primary);
+}
+.blyg-card h3 {
+	margin: 0 0 8px;
+	font-size: var(--font-ui-smaller);
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--text-muted);
+	font-weight: var(--font-semibold);
+}
+.blyg-card p { margin: 4px 0; }
+.blyg-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 4px 0; }
+.blyg-kind {
+	font-size: var(--font-ui-smaller);
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	font-weight: var(--font-semibold);
+	color: var(--interactive-accent);
+	background: var(--background-modifier-hover);
+	padding: 1px 6px;
+	border-radius: var(--radius-s);
+}
+.blyg-state { color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.blyg-state.edited { color: var(--text-warning); }
+.blyg-tiny { font-size: var(--font-ui-smaller); color: var(--text-muted); }
+.blyg-meter { height: 5px; background: var(--background-modifier-border); border-radius: 3px; overflow: hidden; margin: 6px 0 2px; }
+.blyg-meter i { display: block; height: 100%; background: var(--text-success); }
+.blyg-meter i.over { background: var(--text-warning); }
+
+.blyg-checks { list-style: none; padding: 0; margin: 6px 0 2px; }
+.blyg-checks li { padding: 2px 0 2px 18px; position: relative; line-height: 1.4; }
+.blyg-checks li::before { position: absolute; left: 1px; top: 2px; }
+.blyg-checks li.ok::before { content: "✓"; color: var(--text-success); }
+.blyg-checks li.warn::before { content: "!"; color: var(--text-warning); font-weight: 700; left: 4px; }
+.blyg-checks li.bad { color: var(--text-error); }
+.blyg-checks li.bad::before { content: "✕"; }
+
+.blyg-btn { width: 100%; margin-top: 7px; }
+.blyg-btn-row { display: flex; gap: 6px; }
+.blyg-btn-row .blyg-btn { flex: 1; }
+
+.blyg-versions { list-style: none; padding: 0; margin: 4px 0 0; }
+.blyg-versions li { display: grid; grid-template-columns: 30px 1fr auto; gap: 6px; padding: 3px 0; border-top: 1px dashed var(--background-modifier-border); }
+.blyg-versions li:first-child { border-top: 0; }
+.blyg-versions .v { font-weight: var(--font-semibold); }
+.blyg-versions .d { color: var(--text-muted); }
+.blyg-versions .pin { color: var(--text-warning); font-size: var(--font-ui-smaller); }
+.blyg-versions .draft { color: var(--text-warning); font-size: var(--font-ui-smaller); }
+
+.blyg-search { width: 100%; margin: 2px 0 4px; }
+.blyg-frag { display: flex; justify-content: space-between; gap: 8px; padding: 4px 2px; border-top: 1px dashed var(--background-modifier-border); }
+.blyg-frag:first-child { border-top: 0; }
+.blyg-frag span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.blyg-frag a { white-space: nowrap; cursor: pointer; }
+
+.blyg-statusbar .edited { color: var(--text-warning); }
+.blyg-statusbar { cursor: pointer; }
+
+/* Publish window */
+.blyg-modal { width: min(760px, 92vw); }
+.blyg-sub { color: var(--text-muted); font-size: var(--font-ui-small); margin: -4px 0 12px; }
+.blyg-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 700px) { .blyg-cols { grid-template-columns: 1fr; } }
+.blyg-pane { border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); padding: 10px 12px; max-height: 45vh; overflow: auto; }
+.blyg-pane h4 { margin: 0 0 6px; font-size: var(--font-ui-smaller); letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
+/* Mirrors the public site's stylesheet */
+.blyg-public { font-family: Verdana, Geneva, sans-serif; font-size: 13px; line-height: 1.6; }
+.blyg-public blockquote.blyg-transclusion { font-style: normal; background: var(--background-secondary); border-left: 3px solid var(--interactive-accent); padding: 8px 12px; margin: 10px 0; }
+.blyg-diff { white-space: pre-wrap; font-size: var(--font-ui-small); line-height: 1.55; }
+.blyg-diff ins { background: rgba(var(--color-green-rgb), 0.2); text-decoration: none; }
+.blyg-diff del { background: rgba(var(--color-red-rgb), 0.2); }
+.blyg-flags { margin-top: 12px; border: 1px solid var(--text-warning); border-radius: var(--radius-m); padding: 8px 12px; }
+.blyg-flags h4 { margin: 0 0 4px; }
+.blyg-foot { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 14px; }
+.blyg-foot .blyg-tiny { flex: 1; }

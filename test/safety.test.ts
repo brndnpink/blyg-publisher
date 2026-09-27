@@ -242,7 +242,7 @@ describe("Rule 9: image location data is stripped", () => {
 });
 
 describe("Rule 10: preview and confirm before publishing", () => {
-	it.todo("the publish window shows the exact public text and a diff, and requires Confirm (Phase 4 interface)");
+	it.todo("the publish window shows the exact public text and a diff, and requires Confirm: built in Phase 4 (src/modals.ts), verified by hand in Obsidian");
 });
 
 describe("Rule 11: network calls only in the deploy module", () => {

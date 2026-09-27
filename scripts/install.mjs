@@ -19,7 +19,7 @@ if (!existsSync(join(vault, ".obsidian"))) {
 
 const dest = join(vault, ".obsidian/plugins/blyg-publisher");
 mkdirSync(dest, { recursive: true });
-for (const file of ["manifest.json", "main.js"]) {
+for (const file of ["manifest.json", "main.js", "styles.css"]) {
 	copyFileSync(file, join(dest, file));
 }
 console.log(`Installed to ${dest}`);

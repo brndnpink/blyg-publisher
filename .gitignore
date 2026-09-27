@@ -1,0 +1,14 @@
+# build output and tooling
+node_modules/
+main.js
+*.map
+
+# Local-only: design mockups carry the pen name and domain. The repo will be
+# public under a real-name account, so nothing identifying the blyg goes in it.
+design/
+
+# Never commit secrets, vault content, or the ledger
+.env*
+*.token
+ledger.json
+out/

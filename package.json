@@ -1,0 +1,19 @@
+{
+  "name": "blyg-publisher",
+  "version": "0.0.1",
+  "description": "Publish a Blygger blyg from one folder of an Obsidian vault to a static host.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc --noEmit && node esbuild.config.mjs production",
+    "install-plugin": "npm run build && node scripts/install.mjs"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "esbuild": "^0.28.2",
+    "obsidian": "^1.13.1",
+    "typescript": "^7.0.2"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "id": "blyg-publisher",
+  "name": "Blyg Publisher",
+  "version": "0.0.1",
+  "minAppVersion": "1.5.0",
+  "description": "Publish a Blygger blyg from one folder of your vault to a static host.",
+  "author": "Blyg Publisher contributors",
+  "isDesktopOnly": true
+}

@@ -32,7 +32,7 @@ const vault: VaultView = {
 		return (
 			Object.keys(FILES).find((p) => {
 				const name = p.split("/").pop()!.toLowerCase();
-				return p.toLowerCase() === want || name === want || name === `${want}.md`;
+				return p.toLowerCase() === want || p.toLowerCase() === `${want}.md` || name === want || name === `${want}.md`;
 			}) ?? null
 		);
 	},
@@ -102,6 +102,18 @@ describe("Rule 2: embeds only of published Blyg fragments, own line, threads onl
 			"![[Published fragment|alias]]",
 		];
 		for (const c of cases) expect(rules(check(note(c, { kind: "thread" })))).toEqual([2]);
+	});
+	it("explains a link that finds a private note sharing a name with a Blyg note", () => {
+		const twinVault: VaultView = { ...vault, resolve: () => "Twin.md", sameNameInRoot: () => ["7 - Blyg/fragments/Twin.md"] };
+		const r = checkNote(note("![[Twin]]", { kind: "thread" }), twinVault, NO_TERMS);
+		expect(r.problems[0].message).toMatch(/same name.*!\[\[7 - Blyg\/fragments\/Twin\]\]/);
+		const link = checkNote(note("See [[Twin]]."), twinVault, NO_TERMS);
+		expect(link.problems[0].message).toMatch(/\[\[7 - Blyg\/fragments\/Twin\]\]/);
+	});
+	it("accepts a full-path embed of a published fragment", () => {
+		const r = check(note("![[7 - Blyg/fragments/Published fragment]]", { kind: "thread" }));
+		expect(r.problems).toEqual([]);
+		expect(r.publicMarkdown).toBe(`![[${FRAG_ID}]]`);
 	});
 	it("refuses inline embeds and any embed in a fragment", () => {
 		expect(rules(check(note("see ![[Published fragment]] here", { kind: "thread" })))).toEqual([2]);

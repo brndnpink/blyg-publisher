@@ -252,14 +252,25 @@ export default class BlygPublisherPlugin extends Plugin {
 				const { body } = splitFrontmatter(await this.app.vault.read(file));
 				const copy = await this.app.vault.create(path, body.replace(/^\n+/, ""));
 				await this.app.workspace.getLeaf(false).openFile(copy);
-				notice(`Copied to ${path}. The original is unchanged. Review it, then choose Make ${kind}.`);
+				notice(
+					`Copied to ${path}. The original is unchanged. Review it, then choose Make ${kind}.` +
+						(copy.basename === file.basename
+							? " The copy shares its name with the original; when linking or embedding it, use the Blyg panel so the link includes its folder."
+							: ""),
+					10000,
+				);
 			},
 			file.basename,
 		).open();
 	}
 
-	/** Insert a fragment embed on its own line at the cursor of the note being edited. */
-	insertEmbed(name: string) {
+	/**
+	 * Insert a fragment embed on its own line at the cursor of the note being
+	 * edited. Uses Obsidian's shortest unambiguous link text, so a fragment
+	 * that shares its name with a private note (e.g. after Promote) gets its
+	 * folder path and can't resolve to the private one.
+	 */
+	insertEmbed(fragment: TFile) {
 		const leaf = this.app.workspace
 			.getLeavesOfType("markdown")
 			.find((l) => l.view instanceof MarkdownView && l.view.file?.path === this.currentFile?.path);
@@ -269,7 +280,8 @@ export default class BlygPublisherPlugin extends Plugin {
 		const line = editor.getLine(cursor.line);
 		const before = cursor.ch > 0 && line.slice(0, cursor.ch).trim() ? "\n\n" : "";
 		const after = line.slice(cursor.ch).trim() ? "\n\n" : "\n";
-		editor.replaceSelection(`${before}![[${name}]]${after}`);
+		const link = this.app.metadataCache.fileToLinktext(fragment, this.currentFile!.path, true);
+		editor.replaceSelection(`${before}![[${link}]]${after}`);
 		this.app.workspace.setActiveLeaf(leaf, { focus: true });
 	}
 }

@@ -44,6 +44,13 @@ export function makeVaultView(app: App, index: BlygIndex, ledger: Ledger, origin
 			if ((index.byId.get(item.id)?.length ?? 0) > 1) return null;
 			return { id: item.id, kind: item.authored, url: origin + pagePath(item) };
 		},
+		sameNameInRoot(linkpath) {
+			const name = linkpath.split("/").pop()!.replace(/\.md$/, "").toLowerCase();
+			return app.vault
+				.getMarkdownFiles()
+				.filter((f) => isPublishableNotePath(f.path) && f.basename.toLowerCase() === name)
+				.map((f) => f.path);
+		},
 	};
 }
 

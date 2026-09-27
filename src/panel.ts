@@ -151,7 +151,7 @@ export class BlygPanel extends ItemView {
 			for (const r of rows) {
 				const row = list.createDiv({ cls: "blyg-frag" });
 				row.createSpan({ text: r.file!.basename, attr: { title: r.text } });
-				row.createEl("a", { text: "insert" }).onclick = () => this.plugin.insertEmbed(r.file!.basename);
+				row.createEl("a", { text: "insert" }).onclick = () => this.plugin.insertEmbed(r.file!);
 			}
 		};
 		input.oninput = () => {
@@ -159,7 +159,7 @@ export class BlygPanel extends ItemView {
 			draw();
 		};
 		draw();
-		card.createEl("p", { cls: "blyg-tiny", text: "Puts ![[Note name]] on its own line at your cursor. It becomes the fragment's id when you publish." });
+		card.createEl("p", { cls: "blyg-tiny", text: "Puts ![[Note name]] on its own line at your cursor (with its folder path if another note shares the name). It becomes the fragment's id when you publish." });
 	}
 
 	private renderSite(root: HTMLElement) {

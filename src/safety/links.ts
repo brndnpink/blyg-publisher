@@ -17,6 +17,16 @@ export interface VaultView {
 	resolve(linkpath: string, sourcePath: string): string | null;
 	/** If the vault path is a published item, its id, kind, and public URL. */
 	published(path: string): { id: string; kind: "fragment" | "thread"; url: string } | null;
+	/** Notes inside 7 - Blyg whose name matches the link, for explaining ambiguous links. */
+	sameNameInRoot?(linkpath: string): string[];
+}
+
+/** Hint for a link that resolved outside 7 - Blyg when a Blyg note has the same name. */
+function ambiguityHint(vault: VaultView, path: string, embed: boolean): string {
+	const twins = vault.sameNameInRoot?.(path) ?? [];
+	if (!twins.length) return "";
+	const full = twins[0].replace(/\.md$/, "");
+	return ` A note in 7 - Blyg has the same name, but this link finds the private one. Link it by its full path instead: ${embed ? "!" : ""}[[${full}]]`;
 }
 
 export interface LinkResult {
@@ -96,7 +106,7 @@ export function processLinks(markdown: string, kind: "fragment" | "thread", sour
 			} else if (!target) {
 				problems.push({ rule: 2, line: n, message: `${label}: no note by that name` });
 			} else if (!isInPublishRoot(target)) {
-				problems.push({ rule: 2, line: n, message: `${label}: embeds a private note from outside 7 - Blyg` });
+				problems.push({ rule: 2, line: n, message: `${label}: embeds a private note from outside 7 - Blyg.${ambiguityHint(vault, path, true)}` });
 			} else if (sub || alias) {
 				problems.push({ rule: 2, line: n, message: `${label}: embed the whole fragment (no #heading, ^block, or |alias)` });
 			} else {
@@ -142,7 +152,7 @@ export function processLinks(markdown: string, kind: "fragment" | "thread", sour
 						return whole;
 					}
 					if (!isInPublishRoot(target)) {
-						problems.push({ rule: 3, line: n, message: `${whole}: links to a private note outside 7 - Blyg` });
+						problems.push({ rule: 3, line: n, message: `${whole}: links to a private note outside 7 - Blyg.${ambiguityHint(vault, path, false)}` });
 						return whole;
 					}
 					const pub = vault.published(target);

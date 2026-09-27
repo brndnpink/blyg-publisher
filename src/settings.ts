@@ -12,6 +12,14 @@ export interface BlygSettings {
 	authorBio: string;
 	/** Absolute path (or ~/…) to the private name list, outside the vault. */
 	denylistPath: string;
+	/** Cloudflare Pages project name. */
+	pagesProject: string;
+	/** Home page at the domain root (when the blyg is mounted below it). */
+	homeIntro: string;
+	/** One link per line: "Label | https://…" */
+	homeLinks: string;
+	/** Where the built site is written before upload. Empty = a temporary folder. */
+	outputDir: string;
 }
 
 // Deliberately empty: nothing personal lives in the code.
@@ -22,7 +30,19 @@ export const DEFAULT_SETTINGS: BlygSettings = {
 	authorName: "",
 	authorBio: "",
 	denylistPath: "",
+	pagesProject: "",
+	homeIntro: "",
+	homeLinks: "",
+	outputDir: "",
 };
+
+export function parseLinks(text: string): { label: string; url: string }[] {
+	return text
+		.split(/\r?\n/)
+		.map((l) => l.split("|").map((x) => x.trim()))
+		.filter(([label, url]) => label && url && /^(https?:|mailto:)/i.test(url))
+		.map(([label, url]) => ({ label, url }));
+}
 
 export function siteConfig(s: BlygSettings, version: string): SiteConfig {
 	const origin = s.origin.trim() && !s.origin.trim().endsWith("/") ? `${s.origin.trim()}/` : s.origin.trim();
@@ -75,6 +95,25 @@ export class BlygSettingTab extends PluginSettingTab {
 		text("Description", "One line for feed readers. Optional.", "description");
 		text("Author name", "The byline on every item. Use your pen name if you have one.", "authorName");
 		text("Author bio", "Optional.", "authorBio");
+
+		new Setting(containerEl).setName("Home page").setHeading();
+		text("Intro", "A sentence or two for the home page at the domain root.", "homeIntro");
+		new Setting(containerEl)
+			.setName("Links")
+			.setDesc('One per line, "Label | https://…". Shown on the home page under the blyg link.')
+			.addTextArea((t) =>
+				t
+					.setPlaceholder("Newsletter | https://example.substack.com")
+					.setValue(this.plugin.settings.homeLinks)
+					.onChange(async (v) => {
+						this.plugin.settings.homeLinks = v;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl).setName("Deploy").setHeading();
+		text("Cloudflare Pages project", "The project name in your Cloudflare account, e.g. my-site.", "pagesProject", "my-site");
+		text("Output folder", "Optional. Where the site is built before upload. Leave empty for a temporary folder.", "outputDir");
 
 		new Setting(containerEl).setName("Safety").setHeading();
 		text(

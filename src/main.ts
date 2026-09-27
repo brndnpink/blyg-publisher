@@ -1,7 +1,11 @@
 import { debounce, MarkdownView, normalizePath, Plugin, TFile, type Debouncer } from "obsidian";
 import { pin, publish, withdraw } from "./core/ledger";
 import { toIso } from "./core/util";
-import { notice, PinModal, PromoteModal, PublishModal, WithdrawModal } from "./modals";
+import { DeployModal, notice, PinModal, PromoteModal, PublishModal, ResetModal, WithdrawModal } from "./modals";
+import { makePlanner } from "./deployflow";
+import { readDeploys, type DeployRecord } from "./deploys";
+import { fetchLive } from "./deploy/live";
+import { obsidianGet } from "./deploy/net";
 import { BlygPanel, VIEW_TYPE } from "./panel";
 import { splitFrontmatter } from "./safety/clean";
 import { PUBLISH_ROOT } from "./safety/root";
@@ -16,6 +20,7 @@ export default class BlygPublisherPlugin extends Plugin {
 	store!: LedgerStore;
 	context: Context | null = null;
 	status: NoteStatus = { state: "none" };
+	deploys: DeployRecord[] = [];
 	/** The note being edited, remembered even while the sidebar has focus. */
 	private currentFile: TFile | null = null;
 	private statusBar!: HTMLElement;
@@ -63,6 +68,8 @@ export default class BlygPublisherPlugin extends Plugin {
 			name: "Mark current note as a fragment",
 			callback: () => this.currentFile && this.markNote(this.currentFile, "fragment"),
 		});
+		this.addCommand({ id: "deploy", name: "Deploy site…", callback: () => this.openDeploy() });
+		this.addCommand({ id: "start-over", name: "Start over: clear test publishes (before first deploy only)…", callback: () => this.openReset() });
 		this.addCommand({
 			id: "make-thread",
 			name: "Mark current note as a thread",
@@ -94,6 +101,7 @@ export default class BlygPublisherPlugin extends Plugin {
 		this.refreshing = (async () => {
 			try {
 				this.context = await loadContext(this.app, this.store, this.settings, this.manifest.version);
+				this.deploys = await readDeploys(this.app.vault.adapter);
 				const file = this.currentFile && this.app.vault.getAbstractFileByPath(this.currentFile.path) instanceof TFile ? this.currentFile : null;
 				this.status = await noteStatus(this.app, file, this.context);
 			} catch (e) {
@@ -229,6 +237,53 @@ export default class BlygPublisherPlugin extends Plugin {
 		notice(`Withdrawn (v${result.version}). Readers drop it after the next deploy.`);
 		await this.refresh();
 		return true;
+	}
+
+	deployPlanner() {
+		return makePlanner(this);
+	}
+
+	async openDeploy() {
+		await this.refresh();
+		if (!this.settings.origin.trim()) return notice("Set your blyg's web address in settings first.");
+		new DeployModal(this.app, this).open();
+	}
+
+	/**
+	 * Before anything is public, test publishes can be cleared: no promise has
+	 * been made to any reader yet. Refused once any deploy is recorded or a
+	 * blyg is already live at the origin.
+	 */
+	async openReset() {
+		await this.refresh();
+		if (this.deploys.length) return notice("The site has been deployed, so the ledger can't be reset. Withdraw items instead.");
+		const origin = this.context?.origin;
+		if (origin) {
+			const live = await fetchLive(origin, obsidianGet);
+			if (live.kind === "live") return notice(`A blyg is already live at ${origin}, so the ledger can't be reset.`);
+		}
+		const count = Object.keys(this.context?.ledger.items ?? {}).length;
+		if (!count) return notice("The ledger is already empty.");
+		new ResetModal(
+			this.app,
+			async () => {
+				const adapter = this.app.vault.adapter;
+				const stamp = toIso().replace(/[-:]/g, "");
+				if (!(await adapter.exists(this.store.backupDir))) await adapter.mkdir(this.store.backupDir);
+				await adapter.rename(this.store.path, `${this.store.backupDir}/ledger-reset-${stamp}.json`);
+				for (const path of this.context!.index.byPath.keys()) {
+					const file = this.app.vault.getAbstractFileByPath(path);
+					if (file instanceof TFile) {
+						await this.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
+							delete fm.blyg_id;
+						});
+					}
+				}
+				notice("Ledger cleared. Notes keep their text and settings; publish them again to start at v1.", 10000);
+				await this.refresh();
+			},
+			count,
+		).open();
 	}
 
 	async markNote(file: TFile, kind: "fragment" | "thread") {

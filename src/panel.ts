@@ -177,8 +177,17 @@ export class BlygPanel extends ItemView {
 				text: `${ctx.orphans.length} published item(s) have no note in 7 - Blyg (deleted or renamed outside Obsidian?). They stay public until withdrawn.`,
 			});
 		}
-		card.createEl("p", { cls: "blyg-tiny", text: "Deploying to the web comes in the next phase. Publishing now records versions in the ledger." });
+		const last = this.plugin.deploys.at(-1);
+		card.createEl("p", {
+			cls: "blyg-tiny",
+			text: last ? `Last deployed ${last.at === "unknown" ? "(date unknown)" : last.at.slice(0, 16).replace("T", " ") + " UTC"}.` : "Never deployed. Publishing records versions in the ledger; deploying puts them online.",
+		});
+		const host = ctx.origin ? new URL(ctx.origin).host : "the web";
+		this.button(card, `Deploy to ${host}…`, () => this.plugin.openDeploy(), { disabled: ctx.global.length > 0 });
 		const links = card.createDiv({ cls: "blyg-row blyg-tiny" });
+		if (ctx.origin && last) links.createEl("a", { text: "View blyg ↗", href: ctx.origin });
+		if (ctx.origin && last) links.createEl("a", { text: "Feed ↗", href: `${ctx.origin}feed.xml` });
+		if (!last && items.length) links.createEl("a", { text: "Start over…" }).onclick = () => this.plugin.openReset();
 		links.createEl("a", { text: "Settings" }).onclick = () => this.plugin.openSettings();
 	}
 

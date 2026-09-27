@@ -250,3 +250,142 @@ export class PromoteModal extends Modal {
 export function notice(msg: string, ms = 6000) {
 	new Notice(`Blyg: ${msg}`, ms);
 }
+
+/** Deploy: check the live site, re-scan everything, then upload on confirm. */
+export class DeployModal extends Modal {
+	constructor(
+		app: App,
+		private plugin: BlygPublisherPlugin,
+	) {
+		super(app);
+	}
+
+	async onOpen() {
+		const { contentEl } = this;
+		const plan = this.plugin.deployPlanner();
+		this.modalEl.addClass("blyg-modal");
+		this.setTitle(`Deploy to ${plan.origin}`);
+		const status = contentEl.createEl("p", { text: "Checking what's live right now…" });
+
+		const check = await plan.check();
+		status.remove();
+		const list = contentEl.createEl("ul", { cls: "blyg-checks" });
+		for (const p of check.problems) list.createEl("li", { cls: "bad", text: p });
+
+		let needFirstDeployOk = false;
+		if (check.live === "none") {
+			list.createEl("li", { cls: "warn", text: `No blyg is live at ${plan.origin} yet.` });
+			needFirstDeployOk = check.previousDeploys > 0;
+		} else if (check.live === "unreachable") {
+			list.createEl("li", { cls: "warn", text: `Couldn't reach ${plan.origin} (${check.error}). Normal before the domain is connected to Cloudflare Pages.` });
+			needFirstDeployOk = true;
+		} else {
+			list.createEl("li", { cls: "ok", text: `Live site checked: ${check.liveItems} item(s). Nothing would roll back.` });
+		}
+		const c = check.comparison;
+		list.createEl("li", {
+			cls: "ok",
+			text: `This deploy: ${c.newItems} new item(s), ${c.newVersions} new version(s), ${c.withdrawals} withdrawal(s), ${c.newPins} new pin(s). ${check.fileCount} files in all.`,
+		});
+
+		const confirmed = check.flags.map(() => false);
+		let firstOk = !needFirstDeployOk;
+		let btn: ButtonComponent;
+		const update = () => btn.setDisabled(check.problems.length > 0 || !firstOk || confirmed.some((x) => !x));
+
+		if (check.flags.length) {
+			const box = contentEl.createDiv({ cls: "blyg-flags" });
+			box.createEl("h4", { text: `Name scan across the whole site: ${check.flags.length} match(es) to review` });
+			box.createEl("p", { cls: "blyg-tiny", text: "Your name list may have grown since these were published. Confirm each, or cancel and withdraw or edit the item." });
+			check.flags.forEach((f, i) =>
+				new Setting(box)
+					.setName(`"${f.term}" in ${f.where}`)
+					.setDesc(f.excerpt)
+					.addToggle((t) =>
+						t.onChange((v) => {
+							confirmed[i] = v;
+							update();
+						}),
+					),
+			);
+		}
+		if (needFirstDeployOk) {
+			new Setting(contentEl)
+				.setName(check.previousDeploys ? "Deploy anyway" : "This is the first deploy")
+				.setDesc(check.previousDeploys ? "You've deployed before, but the live site can't be checked. Only continue if you know why." : "Nothing can be compared yet.")
+				.addToggle((t) =>
+					t.onChange((v) => {
+						firstOk = v;
+						update();
+					}),
+				);
+		}
+
+		const log = contentEl.createEl("pre", { cls: "blyg-log" });
+		log.hide();
+		const foot = contentEl.createDiv({ cls: "blyg-foot" });
+		foot.createSpan({ cls: "blyg-tiny", text: "Uploads with Cloudflare's own tool (wrangler), using its saved login." });
+		new ButtonComponent(foot).setButtonText("Close").onClick(() => this.close());
+		btn = new ButtonComponent(foot)
+			.setButtonText("Deploy")
+			.setCta()
+			.onClick(async () => {
+				btn.setDisabled(true);
+				log.show();
+				log.setText("");
+				const res = await plan.deploy((chunk) => {
+					log.appendText(chunk);
+					log.scrollTop = log.scrollHeight;
+				});
+				if (res.ok) {
+					btn.setButtonText("Deployed");
+					log.appendText(`\nDone. ${res.url ? `Preview: ${res.url}\n` : ""}Live at ${plan.origin} (may take a minute).\n`);
+				} else {
+					log.appendText(`\nDeploy failed. ${res.hint ?? ""}\n`);
+					btn.setDisabled(false);
+				}
+			});
+		update();
+	}
+
+	onClose() {
+		this.contentEl.empty();
+	}
+}
+
+/** One-time reset of test publishes. Only offered before anything has been deployed. */
+export class ResetModal extends Modal {
+	constructor(
+		app: App,
+		private onConfirm: () => Promise<void>,
+		private count: number,
+	) {
+		super(app);
+	}
+
+	onOpen() {
+		this.modalEl.addClass("blyg-modal");
+		this.setTitle("Start over before the first deploy");
+		this.contentEl.createEl("p", {
+			text: `This clears the ledger's ${this.count} item(s) and removes blyg_id from notes in 7 - Blyg, so everything can be published fresh as v1. Your notes and their text are not changed. The old ledger is kept in the backups folder.`,
+		});
+		this.contentEl.createEl("p", { cls: "blyg-tiny", text: "Only possible because nothing has been deployed yet. After the first deploy, published items can only be withdrawn." });
+		let btn: ButtonComponent;
+		new Setting(this.contentEl).setName("I understand").addToggle((t) => t.onChange((v) => btn.setDisabled(!v)));
+		const foot = this.contentEl.createDiv({ cls: "blyg-foot" });
+		new ButtonComponent(foot).setButtonText("Cancel").onClick(() => this.close());
+		btn = new ButtonComponent(foot)
+			.setButtonText("Start over")
+			.setWarning()
+			.setDisabled(true)
+			.onClick(async () => {
+				btn.setDisabled(true);
+				await this.onConfirm();
+				this.close();
+			});
+	}
+
+	onClose() {
+		this.contentEl.empty();
+	}
+}

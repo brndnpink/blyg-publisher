@@ -258,7 +258,7 @@ describe("Rule 10: preview and confirm before publishing", () => {
 });
 
 describe("Rule 11: network calls only in the deploy module", () => {
-	it("no source file outside src/deploy uses a network API", () => {
+	it("no source file outside src/deploy uses a network API or spawns processes", () => {
 		const offenders: string[] = [];
 		const walk = (dir: string) => {
 			for (const name of readdirSync(dir)) {
@@ -267,7 +267,7 @@ describe("Rule 11: network calls only in the deploy module", () => {
 					if (!p.endsWith(join("src", "deploy"))) walk(p);
 				} else if (/\.ts$/.test(name)) {
 					const src = readFileSync(p, "utf8");
-					if (/\bfetch\s*\(|requestUrl|XMLHttpRequest|WebSocket|from\s+["'](node:)?https?["']|require\(["'](node:)?https?["']\)|sendBeacon/.test(src)) {
+					if (/\bfetch\s*\(|requestUrl|XMLHttpRequest|WebSocket|from\s+["'](node:)?(https?|child_process|net|dgram)["']|require\(["'](node:)?(https?|child_process)["']\)|sendBeacon/.test(src)) {
 						offenders.push(p);
 					}
 				}

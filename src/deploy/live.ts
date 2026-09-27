@@ -13,11 +13,19 @@ interface LiveIndexItem {
 	kind: string;
 	version: number;
 }
-interface LiveDoc {
+export interface LiveDoc {
 	id: string;
+	kind: "fragment" | "thread" | "withdrawn" | string;
 	version: number;
+	created?: string;
+	updated?: string;
+	page?: string;
+	content_md?: string;
+	content_html?: string;
 	content_hash: string;
-	changelog: { version: number; pinned?: boolean }[];
+	media?: { url: string; mime: string; alt: string }[];
+	transclusions?: { id: string; version: number }[];
+	changelog: { version: number; at?: string; note?: string | null; pinned?: boolean }[];
 }
 
 export type LiveState =

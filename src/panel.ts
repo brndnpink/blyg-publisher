@@ -166,6 +166,7 @@ export class BlygPanel extends ItemView {
 	private renderSite(root: HTMLElement) {
 		const ctx = this.plugin.context;
 		if (!ctx) return;
+		if (ctx.mode === "server") return this.renderServer(root);
 		const card = this.card(root, "Site");
 		const items = Object.values(ctx.ledger.items);
 		const live = items.filter((i) => latestVersion(i).kind !== "withdrawn").length;
@@ -189,6 +190,24 @@ export class BlygPanel extends ItemView {
 		if (ctx.origin && last) links.createEl("a", { text: "View blyg ↗", href: ctx.origin });
 		if (ctx.origin && last) links.createEl("a", { text: "Feed ↗", href: `${ctx.origin}feed.xml` });
 		if (!last && items.length) links.createEl("a", { text: "Start over…" }).onclick = () => this.plugin.openReset();
+		links.createEl("a", { text: "Settings" }).onclick = () => this.plugin.openSettings();
+	}
+
+	/** Existing-blyg mode: no deploy step; show the connection and login state. */
+	private renderServer(root: HTMLElement) {
+		const ctx = this.plugin.context!;
+		const card = this.card(root, "Your blyg");
+		const live = Object.values(ctx.ledger.items).filter((i) => latestVersion(i).kind !== "withdrawn").length;
+		card.createDiv({ text: ctx.origin ? `${live} live item${live === 1 ? "" : "s"} on ${ctx.origin.replace(/^https?:\/\//, "")}` : "No blyg address set yet." });
+		const list = card.createEl("ul", { cls: "blyg-checks" });
+		for (const g of ctx.global) list.createEl("li", { cls: "bad", text: g });
+		const loggedIn = this.plugin.hasSession();
+		list.createEl("li", { cls: loggedIn ? "ok" : "warn", text: loggedIn ? "Logged in to the studio" : "Not logged in. Publishing will ask you to log in." });
+		card.createEl("p", { cls: "blyg-tiny", text: "Publishing goes live on your blyg immediately; there's no separate deploy step." });
+		const links = card.createDiv({ cls: "blyg-row blyg-tiny" });
+		if (ctx.origin) links.createEl("a", { text: "View blyg ↗", href: ctx.origin });
+		if (loggedIn) links.createEl("a", { text: "Log out" }).onclick = () => this.plugin.clearSession();
+		else links.createEl("a", { text: "Log in…" }).onclick = () => this.plugin.openLogin();
 		links.createEl("a", { text: "Settings" }).onclick = () => this.plugin.openSettings();
 	}
 

@@ -1,7 +1,7 @@
 {
   "name": "blyg-publisher",
-  "version": "0.1.0",
-  "description": "Publish a Blygger blyg from one folder of an Obsidian vault to a static host.",
+  "version": "0.2.0",
+  "description": "Write in Obsidian, publish to your Blygger blyg (existing reference-server blyg, or a static one).",
   "private": true,
   "type": "module",
   "scripts": {

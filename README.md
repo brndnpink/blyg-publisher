@@ -1,30 +1,38 @@
 # Blyg Publisher
 
-An Obsidian plugin for writing a **[Blygger](https://blygger.org)** blyg from your vault.
+An Obsidian plugin for writing to your **[Blygger](https://blygger.org)** blyg from your vault.
 
-Blygger is a protocol for writing in public: short **fragments**, long **threads** built out of fragments, and a feed that works like a changelog, so editing in public is normal instead of embarrassing. A blyg is just a folder of static files and an RSS feed on your own domain. See [blygger.org](https://blygger.org) for the idea and the spec.
+Blygger is a protocol for writing in public: short **fragments**, long **threads** built out of fragments, and a feed that works like a changelog, so editing in public is normal instead of embarrassing. See [blygger.org](https://blygger.org) for the idea and the spec.
 
-Blyg Publisher turns **one folder of your vault** into a blyg and deploys it to a free static host. It is local-first: your notes and your publishing history stay on your computer, and there is no server of its own.
+Blyg Publisher lets you **write in Obsidian and publish to your blyg**. Only notes in one dedicated folder can ever be published, and each publish goes through a preview.
+
+- **Already have a blyg?** It connects to your existing blyg (the Blygger reference server that most blygs run today) and publishes straight to it. Nothing else to set up.
+- **No blyg yet?** It can instead build and host a small static blyg for you on Cloudflare Pages. See [No blyg yet?](#no-blyg-yet-publish-a-static-one) below.
 
 > **Using an AI agent?** Point it at this repository and say:
 > *"Set up Blyg Publisher from https://github.com/brndnpink/blyg-publisher in my Obsidian vault. Follow AGENTS.md."*
-> The agent handles the install and configuration and tells you the few steps only you can do (clicking in Obsidian, approving a Cloudflare login). [AGENTS.md](AGENTS.md) is written for it; this README is written for you.
+> The agent handles the install and settings and tells you the few steps only you can do, such as enabling the plugin and logging in. [AGENTS.md](AGENTS.md) is written for it; this README is written for you.
 
 ---
 
 ## What you get
 
-- A **Blyg panel** in Obsidian's right sidebar that follows the note you're editing: whether it can be published, safety checks, its versions, and buttons to publish, pin, withdraw, and deploy.
-- A **publish window** that shows exactly what the public will see and what changed since the last version, before anything is saved.
-- A clean, fast public site in the style of [Bear Blog](https://bearblog.dev): no JavaScript, no trackers, automatic dark mode. It sits next to the protocol files other blyg apps read.
-- Everything Blygger 0.2 asks of a publisher at Level 1: stable ids, versions, a changelog feed, an archive index, pins, withdrawal, and threads that quote fragments with provenance. It has been tested against the reference client's import code.
+- A **Blyg panel** in Obsidian's right sidebar that follows the note you're editing: whether it can be published, safety checks, its versions, and buttons to publish, pin, and withdraw.
+- A **publish window** that shows exactly what readers will see and what changed since the live version, before anything goes out.
+- An **embed picker** for threads: pick one of your published fragments and it's quoted into the thread, with provenance, when you publish.
+- **Safety by design:**
+  - one publish folder
+  - opt-in per note
+  - hidden comments and properties stripped
+  - links to private notes refused
+  - an optional name scan
 
 ## Requirements
 
 - **Obsidian desktop** 1.7.2 or newer. The plugin doesn't run on mobile.
-- **macOS.** Deploying runs Cloudflare's command-line tool through the system shell. Linux probably works; Windows isn't supported yet.
-- **Node.js** (for `npx`), used only when deploying.
-- A free **Cloudflare** account for hosting. A domain of your own is optional: you can start on a free `*.pages.dev` address.
+- **macOS** (tested). Linux probably works; Windows is untested.
+- **To connect to an existing blyg:** its address and its studio password.
+- **Only for the static option:** Node.js (for `npx`) and a free Cloudflare account.
 
 ## Install
 
@@ -40,22 +48,15 @@ Or download `main.js`, `manifest.json`, and `styles.css` from the [latest releas
 
 Then in Obsidian: **Settings → Community plugins**, turn community plugins on if they're off, and enable **Blyg Publisher**.
 
-## Set up
+## Connect it to your blyg
 
-1. **Make the publish folder.** Create a top-level folder named `Blyg`, or choose another name in the plugin's settings. **Only notes in this folder can ever be published.** Everything else in your vault stays private. Inside it, `fragments/` and `threads/` subfolders are a good habit but optional.
-2. **Fill in settings** (Settings → Blyg Publisher):
-   - **Web address:** where the blyg will live, ending in `/`. For example `https://yourdomain.com/blyg/`, or `https://your-project.pages.dev/blyg/` if you don't have a domain.
-   - **Title** and **Author name.** A pen name works fine; nothing else about you is published.
-   - **Cloudflare Pages project:** a short name like `my-blyg`.
-3. **Connect Cloudflare** (once), in Terminal:
-   ```bash
-   npx wrangler@4 login
-   ```
-   ```bash
-   npx wrangler@4 pages project create my-blyg --production-branch main
-   ```
-   The first command opens your browser to approve the login. Use your project name in the second.
-4. **Optional, your own domain:** in the Cloudflare dashboard, go to **Workers & Pages → your project → Custom domains** and add it. Use the same address in the *Web address* setting.
+1. **Make the publish folder.** Create a top-level folder named `Blyg`, or choose another name in settings. **Only notes in this folder can ever be published.** Everything else in your vault stays private. `fragments/` and `threads/` subfolders are a good habit but optional.
+2. **Settings → Blyg Publisher:**
+   - **Publish to:** *My existing blyg* (the default).
+   - **Blyg address:** your blyg's public address, the page that lists your fragments and threads. For example `https://example.com/blyg/`.
+   - **Account → Log in…:** enter your blyg's studio password. It's used once to log in and isn't stored. Only the login session is kept, in Obsidian's secure storage, and it lasts about 30 days.
+
+That's it. When you publish, it goes live on your blyg immediately. Your blyg's studio still works as before; items you publish from Obsidian appear there too.
 
 ## The workflow
 
@@ -68,19 +69,15 @@ Then in Obsidian: **Settings → Community plugins**, turn community plugins on 
 - A **fragment** is one short idea (2,000 characters at most; 1,000 or fewer recommended).
 - A **thread** is longer writing. It can **embed fragments**: in the panel's *Embed a fragment* list, click **insert** to put `![[Note name]]` on its own line. When published, the fragment's text is quoted into the thread with a link back to it.
 
-**Publish.** Click **Preview & publish**. The window shows the public text and the changes since the last version, plus the check results. You can add an optional change note for the changelog. Publishing records a new **version** in your private ledger. It isn't online yet.
+**Publish.** Click **Preview & publish**. The window shows the public text and the changes since the live version, plus the check results. You can add an optional change note for the changelog. Then click **Publish**; it goes live on your blyg.
 
-**Deploy.** Click **Deploy** in the panel's *Site* card. Before uploading, it compares against what's already live and refuses anything that would roll the site backward. Deploys are cheap; publish several things and deploy once.
-
-**Keep going.** Edit and publish again whenever you like. Readers see the latest version and a changelog of dates and notes, never diffs. Click any version in the panel to see it privately, with what changed from the version before.
+**Keep going.** Edit and publish again whenever you like. Readers see the latest version and a changelog of dates and notes, never diffs. The panel lists every version; click one to see it.
 
 **Pin** a version to make a permanent, citable copy at its own address. A pin can't be undone.
 
 **Withdraw** an item to take it down. Its address stays up but shows that it was withdrawn, and pinned versions stay public. You can bring it back by publishing again. There is no delete, because copies already fetched by feed readers can't be recalled.
 
-### Titles
-
-A note's name becomes its public title. To use a different one, add a `blyg_title` property. Threads show the title as a heading at the top, unless the note already starts with a heading. Fragments show it on their page and in the feed, but not inside the quote when they're embedded in a thread.
+**Titles.** A thread's title is its first heading. If the note doesn't start with one, the note's name (or a `blyg_title` property) is added as a heading. Fragments are untitled on a standard blyg.
 
 ### Properties the plugin uses
 
@@ -88,30 +85,48 @@ A note's name becomes its public title. To use a different one, add a `blyg_titl
 |---|---|---|
 | `blyg: publish` | you (Make fragment/thread) | Opt-in. Without it the note is never published. |
 | `blyg_kind` | you | `fragment` or `thread`. Can't change after the first publish. |
-| `blyg_id` | the plugin | Permanent id, written on first publish. Don't edit it or copy it to another note. |
-| `blyg_title` | you, optional | Public title if it should differ from the note's name. |
+| `blyg_id` | the plugin | The item's permanent id on your blyg, written on first publish. Don't edit it or copy it to another note. |
+| `blyg_title` | you, optional | Title if it should differ from the note's name. |
 
 ## Safety
 
-The plugin is built so that publishing is always deliberate and only what you meant goes out.
+Publishing is always deliberate, and only what you meant goes out.
 
 - **One folder.** Nothing outside the publish folder is ever read for publishing.
-- **Opt-in per note, and explicit steps.** A note needs `blyg: publish` and a kind, and nothing publishes when you save: publishing takes a click and a confirmation, and deploying takes another.
-- **Only the note's text goes out.** Properties, tags, and aliases never leave the vault. **Hidden comments** (`%% … %%` and `<!-- … -->`) are removed, because the protocol publishes the raw Markdown.
+- **Opt-in per note, and explicit steps.** A note needs `blyg: publish` and a kind, and nothing publishes when you save: publishing takes a click and a confirmation.
+- **Only the note's text goes out.** Properties, tags, and aliases never leave the vault. **Hidden comments** (`%% … %%` and `<!-- … -->`) are removed, because Blygger publishes the raw Markdown.
 - **Refused until fixed:**
   - links or embeds pointing outside the publish folder, since even a link's text can reveal a private note's title
   - `obsidian://` and `file://` addresses
   - images, which aren't supported yet
   - Dataview and other query blocks
-- **Optional name scan.** Turn it on in settings to flag email addresses, phone numbers, "IEP", "504", and any names in a private list you keep outside the publish folder. It flags matches and never edits your text; you confirm each match or fix it. It runs again before every deploy, so names you add to the list later are caught in older items too.
-- **No rollback.** The plugin refuses to deploy anything that would move a live item to an older version, change a published version's text, or drop a pin. If you sync your vault between computers, it also stops when it sees a sync-conflict copy of the ledger.
-- **Your history stays yours.** The full history of every item is kept in `<publish folder>/.blyg/ledger.json`, with automatic backups. Only the current version and pinned versions are ever public.
+- **Optional name scan.** Turn it on in settings to flag email addresses, phone numbers, "IEP", "504", and any names in a private list you keep outside the publish folder. It flags matches and never edits your text; you confirm each match or fix it.
+- **Your password isn't stored.** Only the login session is kept, in Obsidian's secure storage, not in your vault.
+
+## No blyg yet? Publish a static one
+
+If you don't run a blyg, the plugin can be one. Set **Publish to → A static site I deploy**. The plugin then:
+
+- **keeps your blyg's history itself,** in `<publish folder>/.blyg/ledger.json`, with automatic backups
+- **builds all the Blygger files plus a simple public site:** Bear Blog-style pages, no JavaScript, automatic dark mode
+- **deploys to a free Cloudflare Pages site** when you click **Deploy** in the panel. Before uploading, it compares against what's already live and refuses anything that would roll the site backward.
+
+Setup, once, in Terminal (the first command opens your browser to approve the login):
+
+```bash
+npx wrangler@4 login
+```
+```bash
+npx wrangler@4 pages project create my-blyg --production-branch main
+```
+
+Then fill in the static-site settings: web address (for example `https://my-blyg.pages.dev/blyg/`, or your own domain), title, author name, and the Pages project name. Publish records versions locally; **Deploy** puts them online. Static mode also publishes fragment titles and offers a one-time **Start over** to clear test items before your first deploy.
 
 ## Status and limits
 
-- Version 0.1, early. Implements the Blygger 0.2 spec at Level 1 on the publishing side. The spec is pre-1.0 and may change.
-- **Not yet:** images, AI-generated connective text ("TK"), blogrolls, reading other blygs inside Obsidian (use any RSS reader for now), and Windows.
-- Only one computer should deploy at a time. The ledger syncs with your vault, and the plugin checks for conflicts, but it can't coordinate two deploys running at once.
+- Version 0.2, early. Implements Blygger 0.2 publishing at Level 1.
+- **Existing-blyg mode** is built for the Blygger reference server (`blygger-spec`) and its owner API. It has been tested against a local copy of that server. The spec is pre-1.0; if the server's API changes, this mode may need an update.
+- **Not yet:** images, AI-generated connective text ("TK"), and reading other blygs inside Obsidian (use your blyg's studio or any RSS reader).
 
 ## Building from source
 
@@ -124,16 +139,16 @@ BLYG_VAULT="/path/to/vault" npm run install-plugin   # type-check, test, build, 
 ```
 
 The code is split so the protocol and safety rules can be tested without Obsidian:
-- `src/core/`: ids, the ledger, protocol files
+- `src/core/`: ids, versions, protocol files
 - `src/safety/`: what may be published
-- `src/site/`: public pages
-- `src/deploy/`: the only code that uses the network
+- `src/site/`: static-mode pages
+- `src/deploy/`: every network call, including the reference-server client
 
-The tests enforce that last split.
+`test/server.integration.test.ts` runs against a live reference server when you set `BLYG_TEST_SERVER` and `BLYG_TEST_PASSWORD`.
 
 ## Credits
 
-Blygger was designed by Venkatesh Rao and collaborators; see [blygger.org](https://blygger.org) and [github.com/blygger](https://github.com/blygger). This plugin is an independent implementation.
+Blygger was designed by Venkatesh Rao and collaborators; see [blygger.org](https://blygger.org) and [github.com/blygger](https://github.com/blygger). This plugin is an independent client.
 
 ## License
 

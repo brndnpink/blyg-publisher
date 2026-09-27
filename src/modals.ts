@@ -34,7 +34,10 @@ export class PublishModal extends Modal {
 		this.setTitle(`Publish v${nextVersion} of "${file.basename}"`);
 		contentEl.createDiv({
 			cls: "blyg-sub",
-			text: `${kind === "thread" ? "Thread" : "Fragment"} · goes live at ${ctx.origin || "your blyg"} the next time you deploy`,
+			text:
+				ctx.mode === "server"
+					? `${kind === "thread" ? "Thread" : "Fragment"} · goes live on ${ctx.origin || "your blyg"} as soon as you publish`
+					: `${kind === "thread" ? "Thread" : "Fragment"} · goes live at ${ctx.origin || "your blyg"} the next time you deploy`,
 		});
 
 		// What the public will see, rendered exactly as the site will.
@@ -50,7 +53,7 @@ export class PublishModal extends Modal {
 		const pub = cols.createDiv({ cls: "blyg-pane" });
 		pub.createEl("h4", { text: "Exactly what the public will see" });
 		const pubBody = pub.createDiv({ cls: "blyg-public" });
-		if (kind === "fragment") pubBody.createEl("h2", { cls: "blyg-public-title", text: check.title });
+		if (kind === "fragment" && ctx.mode === "static") pubBody.createEl("h2", { cls: "blyg-public-title", text: check.title });
 		pubBody.append(sanitizeHTMLToDom(html));
 
 		const changes = cols.createDiv({ cls: "blyg-pane" });
@@ -59,13 +62,13 @@ export class PublishModal extends Modal {
 		const diffEl = changes.createDiv({ cls: "blyg-diff" });
 		if (live) {
 			const parts = diffText(idsToNames(live.content_md, ctx.index), idsToNames(check.publicMarkdown, ctx.index));
-			if (kind === "fragment" && (live.title ?? "") !== check.title) {
+			if (kind === "fragment" && ctx.mode === "static" && (live.title ?? "") !== check.title) {
 				const t = diffEl.createDiv({ cls: "blyg-tiny" });
 				t.createSpan({ text: "Title: " });
 				if (live.title) t.createEl("del", { text: live.title });
 				t.createEl("ins", { text: check.title });
 			}
-			if (!parts.some((p) => p.type !== "same") && (live.title ?? "") === check.title) {
+			if (!parts.some((p) => p.type !== "same") && (ctx.mode === "server" || (live.title ?? "") === check.title)) {
 				diffEl.createSpan({ text: "No text changes. Embedded fragments will update to their latest versions." });
 			}
 			for (const p of parts) diffEl.createEl(p.type === "add" ? "ins" : p.type === "del" ? "del" : "span", { text: p.text });
@@ -434,7 +437,9 @@ export class VersionModal extends Modal {
 		const latest = latestVersion(item);
 		const isLive = v === latest && v.kind !== "withdrawn";
 		const lastDeploy = this.plugin.deploys.at(-1)?.at;
-		const deployed = !!lastDeploy && lastDeploy !== "unknown" && v.at <= lastDeploy;
+		// Server mode publishes straight to the live blyg.
+		const deployed = ctx.mode === "server" || (!!lastDeploy && lastDeploy !== "unknown" && v.at <= lastDeploy);
+		const textKnown = v.kind === "withdrawn" || v.content_hash !== "";
 		const name = v.title ?? latestVersion(item).title ?? ctx.index.byId.get(item.id)?.[0]?.basename ?? item.id;
 
 		this.setTitle(`v${v.version} of "${name}"`);
@@ -458,13 +463,16 @@ export class VersionModal extends Modal {
 		if (v.kind === "withdrawn") body.createEl("p", { cls: "blyg-tiny", text: "(No text: withdrawn.)" });
 		else {
 			if (item.authored === "fragment" && v.title) body.createEl("h2", { cls: "blyg-public-title", text: v.title });
-			body.append(sanitizeHTMLToDom(v.content_html));
+			if (textKnown) body.append(sanitizeHTMLToDom(v.content_html));
+			else body.createEl("p", { cls: "blyg-tiny", text: "Only the current version's text is public. Older versions are kept in your blyg's studio." });
 		}
 
 		const changes = cols.createDiv({ cls: "blyg-pane" });
 		changes.createEl("h4", { text: prev ? `Changes from v${prev.version}` : "First version" });
 		const diffEl = changes.createDiv({ cls: "blyg-diff" });
-		if (prev) {
+		if (prev && (!textKnown || prev.content_hash === "")) {
+			diffEl.createSpan({ cls: "blyg-tiny", text: "Changes between older versions are shown in your blyg's studio." });
+		} else if (prev) {
 			if ((prev.title ?? "") !== (v.title ?? "") && item.authored === "fragment") {
 				const t = diffEl.createDiv({ cls: "blyg-tiny" });
 				t.createSpan({ text: "Title: " });
@@ -502,6 +510,54 @@ export class VersionModal extends Modal {
 			});
 		}
 		new ButtonComponent(foot).setButtonText("Close").onClick(() => this.close());
+	}
+
+	onClose() {
+		this.contentEl.empty();
+	}
+}
+
+/** Owner login for an existing blyg. The password is sent once and never stored. */
+export class LoginModal extends Modal {
+	constructor(
+		app: App,
+		private plugin: BlygPublisherPlugin,
+		private origin: string,
+		private onDone?: () => void,
+	) {
+		super(app);
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		this.modalEl.addClass("blyg-modal");
+		this.setTitle("Log in to your blyg");
+		contentEl.createEl("p", { text: `Enter the studio password for ${this.origin || "your blyg"}. It's sent once to log in and isn't stored; only the login session is kept, in Obsidian's secure storage.` });
+		const input = contentEl.createEl("input", { attr: { type: "password", placeholder: "Studio password", autocomplete: "current-password" }, cls: "blyg-password" });
+		const error = contentEl.createEl("p", { cls: "blyg-tiny mod-warning" });
+		const foot = contentEl.createDiv({ cls: "blyg-foot" });
+		new ButtonComponent(foot).setButtonText("Cancel").onClick(() => this.close());
+		const btn = new ButtonComponent(foot).setButtonText("Log in").setCta();
+		const submit = async () => {
+			if (!input.value) return;
+			btn.setDisabled(true);
+			error.setText("");
+			try {
+				await this.plugin.loginWith(input.value);
+				input.value = "";
+				notice("Logged in to your blyg.");
+				this.close();
+				this.onDone?.();
+			} catch (e) {
+				error.setText((e as Error).message);
+				btn.setDisabled(false);
+			}
+		};
+		btn.onClick(submit);
+		input.addEventListener("keydown", (ev) => {
+			if (ev.key === "Enter") void submit();
+		});
+		window.setTimeout(() => input.focus(), 50);
 	}
 
 	onClose() {

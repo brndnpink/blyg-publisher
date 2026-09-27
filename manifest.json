@@ -1,9 +1,9 @@
 {
   "id": "blyg-publisher",
   "name": "Blyg Publisher",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "minAppVersion": "1.7.2",
-  "description": "Publish a Blygger blyg (blogs × wikis × changelogs, on static files and RSS) from one folder of your vault to a static host. Local-first; desktop only.",
+  "description": "Write in Obsidian, publish to your Blygger blyg. Connects to an existing blyg, or builds and deploys a static one. Only one dedicated folder can ever be published. Desktop only.",
   "author": "Blyg Publisher contributors",
   "isDesktopOnly": true,
   "authorUrl": "https://github.com/brndnpink/blyg-publisher"

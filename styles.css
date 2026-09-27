@@ -88,3 +88,4 @@
 .blyg-versions li.blyg-clickable { cursor: pointer; border-radius: var(--radius-s); }
 .blyg-versions li.blyg-clickable:hover { background: var(--background-modifier-hover); }
 .blyg-foot a { font-size: var(--font-ui-small); }
+.blyg-password { width: 100%; margin: 6px 0; }

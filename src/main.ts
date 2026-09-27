@@ -1,7 +1,11 @@
 import { debounce, MarkdownView, normalizePath, Plugin, TFile, type Debouncer } from "obsidian";
 import { pin, publish, withdraw } from "./core/ledger";
 import { toIso } from "./core/util";
-import { DeployModal, notice, PinModal, PromoteModal, PublishModal, ResetModal, VersionModal, WithdrawModal } from "./modals";
+import { DeployModal, LoginModal, notice, PinModal, PromoteModal, PublishModal, ResetModal, VersionModal, WithdrawModal } from "./modals";
+import { endpointsFor, login, makeServerClient, SessionExpired, type ServerClient } from "./deploy/server";
+import { ledgerFromLive } from "./remote";
+import type { RemoteState } from "./status";
+import { normalizeOrigin } from "./settings";
 import type { LedgerItem } from "./core/types";
 import { makePlanner } from "./deployflow";
 import { readDeploys, type DeployRecord } from "./deploys";
@@ -21,6 +25,10 @@ export default class BlygPublisherPlugin extends Plugin {
 	context: Context | null = null;
 	status: NoteStatus = { state: "none" };
 	deploys: DeployRecord[] = [];
+	/** Server mode: what was last read from the blyg. */
+	private remote: RemoteState | null = null;
+	/** Fallback session store when Obsidian has no secret storage (older versions). */
+	private memorySession: string | null = null;
 	/** The note being edited, remembered even while the sidebar has focus. */
 	private currentFile: TFile | null = null;
 	private statusBar!: HTMLElement;
@@ -109,7 +117,8 @@ export default class BlygPublisherPlugin extends Plugin {
 		this.refreshing = (async () => {
 			try {
 				const root = this.root;
-				this.context = await loadContext(this.app, this.store, this.settings, this.manifest.version, root);
+				if (this.settings.target === "server") await this.refreshRemote();
+				this.context = await loadContext(this.app, this.store, this.settings, this.manifest.version, root, this.remote);
 				this.deploys = await readDeploys(this.app.vault.adapter, root.stateDir);
 				const file = this.currentFile && this.app.vault.getAbstractFileByPath(this.currentFile.path) instanceof TFile ? this.currentFile : null;
 				this.status = await noteStatus(this.app, file, this.context);
@@ -203,6 +212,7 @@ export default class BlygPublisherPlugin extends Plugin {
 			notice(`Nothing was published: ${now.blockers[0]}`);
 			return false;
 		}
+		if (this.settings.target === "server") return this.publishToServer(now, note);
 		const at = toIso();
 		const result = await this.store.update((ledger) =>
 			publish(ledger, { id: now.item?.id, kind: now.check.kind!, content_md: now.check.publicMarkdown, title: now.check.title, note: note || null }, at),
@@ -226,6 +236,11 @@ export default class BlygPublisherPlugin extends Plugin {
 	}
 
 	async pinItem(id: string, version: number): Promise<boolean> {
+		if (this.settings.target === "server") {
+			const done = await this.withServer("Not pinned", (api) => api.pin(id, version));
+			if (done) notice(`Pinned v${version}. It's public permanently.`);
+			return done;
+		}
 		const result = await this.store.update((ledger) => pin(ledger, id, version));
 		if (!result.ok) {
 			notice(`Not pinned: ${result.errors.join("; ")}`, 10000);
@@ -237,6 +252,14 @@ export default class BlygPublisherPlugin extends Plugin {
 	}
 
 	async withdrawItem(id: string, note: string | null): Promise<boolean> {
+		if (this.settings.target === "server") {
+			let version = 0;
+			const done = await this.withServer("Not withdrawn", async (api) => {
+				version = await api.withdraw(id, note);
+			});
+			if (done) notice(`Withdrawn (v${version}). Blyg readers will drop it.`);
+			return done;
+		}
 		const at = toIso();
 		const result = await this.store.update((ledger) => withdraw(ledger, id, at, note));
 		if (!result.ok) {
@@ -248,6 +271,126 @@ export default class BlygPublisherPlugin extends Plugin {
 		return true;
 	}
 
+	// ---- Server mode ("existing blyg") ----
+
+	private sessionKey(): string {
+		const origin = normalizeOrigin(this.settings.origin);
+		let host = "unknown";
+		try {
+			host = endpointsFor(origin).host.replace(/^https?:\/\//, "");
+		} catch {
+			/* invalid origin: settings problems block publishing */
+		}
+		return `blyg-publisher-session-${host.replace(/[^a-z0-9.-]/gi, "_")}`;
+	}
+
+	private secrets(): { getSecret(id: string): string | null; setSecret(id: string, v: string): void } | null {
+		const s = (this.app as unknown as { secretStorage?: { getSecret(id: string): string | null; setSecret(id: string, v: string): void } }).secretStorage;
+		return s ?? null;
+	}
+
+	getSession(): string | null {
+		const s = this.secrets();
+		const v = s ? s.getSecret(this.sessionKey()) : this.memorySession;
+		return v && v.startsWith("blyg_session=") ? v : null;
+	}
+
+	hasSession(): boolean {
+		return this.getSession() !== null;
+	}
+
+	clearSession() {
+		const s = this.secrets();
+		if (s) s.setSecret(this.sessionKey(), "");
+		this.memorySession = null;
+		void this.refresh();
+	}
+
+	/** Log in with the owner password (used once, never stored); keeps only the session. */
+	async loginWith(password: string): Promise<void> {
+		const cookie = await login(normalizeOrigin(this.settings.origin), password);
+		const s = this.secrets();
+		if (s) s.setSecret(this.sessionKey(), cookie);
+		else this.memorySession = cookie;
+		await this.refresh();
+	}
+
+	openLogin(onDone?: () => void) {
+		new LoginModal(this.app, this, normalizeOrigin(this.settings.origin), onDone).open();
+	}
+
+	/** Re-read the blyg's public files (at most once a minute unless forced). */
+	async refreshRemote(force = false): Promise<void> {
+		if (!force && this.remote && Date.now() - this.remote.fetchedAt < 60_000) return;
+		const origin = normalizeOrigin(this.settings.origin);
+		if (!origin) {
+			this.remote = null;
+			return;
+		}
+		const live = await fetchLive(origin, obsidianGet);
+		const error =
+			live.kind === "unreachable"
+				? `Couldn't read your blyg at ${origin} (${live.error}).`
+				: live.kind === "none"
+					? `No blyg found at ${origin} (items/index.json is missing). Check the blyg address in settings.`
+					: null;
+		this.remote = { ledger: ledgerFromLive(live), error, fetchedAt: Date.now() };
+	}
+
+	/**
+	 * Run an owner-API action, asking the author to log in first if needed.
+	 * Refreshes from the blyg afterward.
+	 */
+	private async withServer(failure: string, fn: (api: ServerClient) => Promise<unknown>): Promise<boolean> {
+		const cookie = this.getSession();
+		if (!cookie) {
+			notice("Log in to your blyg first.");
+			this.openLogin();
+			return false;
+		}
+		try {
+			await fn(makeServerClient(normalizeOrigin(this.settings.origin), cookie));
+		} catch (e) {
+			if (e instanceof SessionExpired) {
+				this.clearSession();
+				notice("Your blyg session expired. Log in again, then retry.");
+				this.openLogin();
+			} else {
+				notice(`${failure}: ${(e as Error).message}`, 10000);
+			}
+			await this.refreshRemote(true);
+			await this.refresh();
+			return false;
+		}
+		await this.refreshRemote(true);
+		await this.refresh();
+		return true;
+	}
+
+	/**
+	 * Server-mode publish. A new note becomes a draft on the blyg (its id is
+	 * saved to the note right away, so a failed publish can be retried); then
+	 * the cleaned text is saved and published. It's live immediately.
+	 */
+	private async publishToServer(now: Marked, note: string): Promise<boolean> {
+		let version = 0;
+		const done = await this.withServer("Nothing was published", async (api) => {
+			let id = now.check.id;
+			if (!id) {
+				id = await api.createItem(now.check.kind!, now.check.publicMarkdown);
+				const newId = id;
+				await this.app.fileManager.processFrontMatter(now.file, (fm: Record<string, unknown>) => {
+					fm.blyg_id = newId;
+				});
+			} else {
+				await api.saveText(id, now.check.publicMarkdown);
+			}
+			version = await api.publish(id, note || null);
+		});
+		if (done) notice(`Published v${version}. It's live on your blyg now.`);
+		return done;
+	}
+
 	openVersion(item: LedgerItem, version: number) {
 		new VersionModal(this.app, this, item, version).open();
 	}
@@ -257,6 +400,7 @@ export default class BlygPublisherPlugin extends Plugin {
 	}
 
 	async openDeploy() {
+		if (this.settings.target === "server") return notice("Nothing to deploy: publishing goes live on your blyg directly.");
 		await this.refresh();
 		if (!this.settings.origin.trim()) return notice("Set your blyg's web address in settings first.");
 		new DeployModal(this.app, this).open();
@@ -268,6 +412,7 @@ export default class BlygPublisherPlugin extends Plugin {
 	 * blyg is already live at the origin.
 	 */
 	async openReset() {
+		if (this.settings.target === "server") return notice("Start over only applies to static sites. Your blyg's studio manages its own items.");
 		await this.refresh();
 		if (this.deploys.length) return notice("The site has been deployed, so the ledger can't be reset. Withdraw items instead.");
 		const origin = this.context?.origin;

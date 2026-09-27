@@ -7,11 +7,20 @@ import type { Ledger, LedgerItem, VersionRecord } from "./core/types";
 import { checkNote, type CheckResult } from "./safety/check";
 import type { PublishRoot } from "./safety/root";
 import type { Denylist } from "./safety/scan";
-import { settingsProblems, type BlygSettings } from "./settings";
+import { normalizeOrigin, settingsProblems, type BlygSettings, type Target } from "./settings";
 import type { LedgerStore } from "./store";
 import { buildIndex, makeVaultView, readDenylist, type BlygIndex } from "./vault";
 
+/** What the plugin last read from an existing blyg (server mode). */
+export interface RemoteState {
+	ledger: Ledger;
+	/** Why the blyg couldn't be read, if it couldn't. */
+	error: string | null;
+	fetchedAt: number;
+}
+
 export interface Context {
+	mode: Target;
 	root: PublishRoot;
 	ledger: Ledger;
 	index: BlygIndex;
@@ -24,18 +33,33 @@ export interface Context {
 	origin: string;
 }
 
-export async function loadContext(app: App, store: LedgerStore, settings: BlygSettings, version: string, root: PublishRoot): Promise<Context> {
+export async function loadContext(
+	app: App,
+	store: LedgerStore,
+	settings: BlygSettings,
+	version: string,
+	root: PublishRoot,
+	remote: RemoteState | null,
+): Promise<Context> {
 	const global = settingsProblems(settings, version);
 	if (!(app.vault.getAbstractFileByPath(root.folder) instanceof TFolder)) {
 		global.push(`Create a folder named "${root.folder}" at the top of your vault. Only notes in it can be published.`);
 	}
 	let ledger: Ledger = { schema: 1, items: {} };
-	try {
-		ledger = await store.load();
-	} catch (e) {
-		global.push((e as Error).message);
+	const mode = settings.target;
+	if (mode === "server") {
+		if (remote) {
+			ledger = remote.ledger;
+			if (remote.error) global.push(remote.error);
+		}
+	} else {
+		try {
+			ledger = await store.load();
+		} catch (e) {
+			global.push((e as Error).message);
+		}
 	}
-	const conflicts = await store.conflicts();
+	const conflicts = mode === "static" ? await store.conflicts() : [];
 	if (conflicts.length) {
 		global.push(`Sync conflict in the ledger folder (${conflicts.map((c) => c.split("/").pop()).join(", ")}). Resolve it before publishing.`);
 	}
@@ -52,8 +76,9 @@ export async function loadContext(app: App, store: LedgerStore, settings: BlygSe
 	}
 	const index = buildIndex(app, root);
 	const orphans = Object.keys(ledger.items).filter((id) => !index.byId.has(id));
-	const origin = settings.origin.trim() && !settings.origin.trim().endsWith("/") ? `${settings.origin.trim()}/` : settings.origin.trim();
-	return { root, ledger, index, denylist, global, orphans, origin };
+	const origin = normalizeOrigin(settings.origin);
+	// In server mode the blyg may hold items written elsewhere (its own studio); those aren't orphans.
+	return { mode, root, ledger, index, denylist, global, orphans: mode === "static" ? orphans : [], origin };
 }
 
 export type NoteStatus =
@@ -87,7 +112,7 @@ export async function noteStatus(app: App, file: TFile | null, ctx: Context): Pr
 
 	const blockers = [...ctx.global, ...check.problems.map((p) => (p.line ? `Line ${p.line}: ${p.message}` : p.message))];
 	const item = check.id ? (ctx.ledger.items[check.id] ?? null) : null;
-	if (check.id && !item) {
+	if (check.id && !item && ctx.mode === "static") {
 		blockers.push("This note has a blyg_id the ledger doesn't know. The ledger may be out of date or restored from an old backup.");
 	}
 	if (check.id && (ctx.index.byId.get(check.id)?.length ?? 0) > 1) {
@@ -100,7 +125,11 @@ export async function noteStatus(app: App, file: TFile | null, ctx: Context): Pr
 
 	const latest = item ? latestVersion(item) : null;
 	const edited =
-		!latest || latest.kind === "withdrawn" || check.publicMarkdown !== latest.content_md || (latest.title ?? "") !== check.title;
+		!latest ||
+		latest.kind === "withdrawn" ||
+		check.publicMarkdown !== latest.content_md ||
+		// Reference servers have no title field; only static mode publishes fragment titles.
+		(ctx.mode === "static" && (latest.title ?? "") !== check.title);
 	let staleEmbeds = 0;
 	if (latest && latest.kind === "thread") {
 		for (const t of latest.transclusions ?? []) {

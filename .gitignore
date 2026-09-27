@@ -12,3 +12,6 @@ design/
 *.token
 ledger.json
 out/
+
+# Live samples fetched from other people's blygs, for local conformance tests only
+fixtures/live/

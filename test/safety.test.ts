@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	checkNote,
-	isInPublishRoot,
-	isPublishableNotePath,
+	folderProblem,
+	PublishRoot,
 	parseDenylist,
 	splitFrontmatter,
 	stripHidden,
@@ -18,15 +18,19 @@ const THREAD_ID = "7c9wk2mhq0v3xj8tn5rzfd41bg";
 
 /** A small fake vault. Paths are what Obsidian's link resolver would return. */
 const FILES: Record<string, { id: string; kind: "fragment" | "thread" } | null> = {
-	"7 - Blyg/fragments/Published fragment.md": { id: FRAG_ID, kind: "fragment" },
-	"7 - Blyg/threads/Published thread.md": { id: THREAD_ID, kind: "thread" },
-	"7 - Blyg/fragments/Draft fragment.md": null,
+	"Blyg/fragments/Published fragment.md": { id: FRAG_ID, kind: "fragment" },
+	"Blyg/threads/Published thread.md": { id: THREAD_ID, kind: "thread" },
+	"Blyg/fragments/Draft fragment.md": null,
 	"3 - Areas/APUSH.md": null,
 	"1 - Daily/Sep 12, 2026.md": null,
 	"6 - Attachments/class photo.jpg": null,
-	"7 - Blyg/media/chart.png": null,
+	"Blyg/media/chart.png": null,
 };
+const ROOT = new PublishRoot("Blyg");
+const isInPublishRoot = (p: string) => ROOT.contains(p);
+const isPublishableNotePath = (p: string) => ROOT.isPublishableNote(p);
 const vault: VaultView = {
+	root: ROOT,
 	resolve(linkpath) {
 		const want = linkpath.toLowerCase();
 		return (
@@ -49,25 +53,25 @@ function note(body: string, opts: Partial<NoteInput> & { kind?: string } = {}): 
 	const fmText = Object.entries(frontmatter)
 		.map(([k, v]) => `${k}: ${String(v)}`)
 		.join("\n");
-	return { path: opts.path ?? `7 - Blyg/${kind}s/Test.md`, frontmatter, text: opts.text ?? `---\n${fmText}\n---\n${body}` };
+	return { path: opts.path ?? `Blyg/${kind}s/Test.md`, frontmatter, text: opts.text ?? `---\n${fmText}\n---\n${body}` };
 }
 
 const check = (n: NoteInput, terms = NO_TERMS) => checkNote(n, vault, terms);
 const rules = (r: ReturnType<typeof check>) => r.problems.map((p) => p.rule);
 
-describe("Rule 1: only opted-in notes inside 7 - Blyg", () => {
+describe("Rule 1: only opted-in notes inside the publish folder", () => {
 	it("refuses notes outside the folder, however they're marked", () => {
-		for (const path of ["3 - Areas/APUSH.md", "1 - Daily/Sep 12, 2026.md", "7 - Blyg.md", "Blyg/x.md", "8 - Blyg/x.md"]) {
+		for (const path of ["3 - Areas/APUSH.md", "1 - Daily/Sep 12, 2026.md", "Blyg.md", "Blyg2/x.md", "Notes/Blyg/x.md", "blyg/x.md"]) {
 			const r = check(note("text", { path }));
 			expect(rules(r)).toEqual([1]);
 			expect(r.publicMarkdown).toBe("");
 		}
 	});
 	it("refuses path tricks and plugin state", () => {
-		expect(isInPublishRoot("7 - Blyg/../3 - Areas/APUSH.md")).toBe(false);
-		expect(isInPublishRoot("7 - Blyg//x.md")).toBe(false);
-		expect(isPublishableNotePath("7 - Blyg/.blyg/ledger.md")).toBe(false);
-		expect(isPublishableNotePath("7 - Blyg/media/chart.png")).toBe(false);
+		expect(isInPublishRoot("Blyg/../3 - Areas/APUSH.md")).toBe(false);
+		expect(isInPublishRoot("Blyg//x.md")).toBe(false);
+		expect(isPublishableNotePath("Blyg/.blyg/ledger.md")).toBe(false);
+		expect(isPublishableNotePath("Blyg/media/chart.png")).toBe(false);
 	});
 	it("requires blyg: publish and a valid kind", () => {
 		expect(rules(check(note("x", { frontmatter: { blyg_kind: "fragment" } })))).toEqual([1]);
@@ -104,14 +108,14 @@ describe("Rule 2: embeds only of published Blyg fragments, own line, threads onl
 		for (const c of cases) expect(rules(check(note(c, { kind: "thread" })))).toEqual([2]);
 	});
 	it("explains a link that finds a private note sharing a name with a Blyg note", () => {
-		const twinVault: VaultView = { ...vault, resolve: () => "Twin.md", sameNameInRoot: () => ["7 - Blyg/fragments/Twin.md"] };
+		const twinVault: VaultView = { ...vault, resolve: () => "Twin.md", sameNameInRoot: () => ["Blyg/fragments/Twin.md"] };
 		const r = checkNote(note("![[Twin]]", { kind: "thread" }), twinVault, NO_TERMS);
-		expect(r.problems[0].message).toMatch(/same name.*!\[\[7 - Blyg\/fragments\/Twin\]\]/);
+		expect(r.problems[0].message).toMatch(/same name.*!\[\[Blyg\/fragments\/Twin\]\]/);
 		const link = checkNote(note("See [[Twin]]."), twinVault, NO_TERMS);
-		expect(link.problems[0].message).toMatch(/\[\[7 - Blyg\/fragments\/Twin\]\]/);
+		expect(link.problems[0].message).toMatch(/\[\[Blyg\/fragments\/Twin\]\]/);
 	});
 	it("accepts a full-path embed of a published fragment", () => {
-		const r = check(note("![[7 - Blyg/fragments/Published fragment]]", { kind: "thread" }));
+		const r = check(note("![[Blyg/fragments/Published fragment]]", { kind: "thread" }));
 		expect(r.problems).toEqual([]);
 		expect(r.publicMarkdown).toBe(`# Test\n\n![[${FRAG_ID}]]`);
 	});
@@ -125,7 +129,7 @@ describe("Rule 2: embeds only of published Blyg fragments, own line, threads onl
 	});
 });
 
-describe("Rule 3: no links out of 7 - Blyg (link text can leak titles)", () => {
+describe("Rule 3: no links out of Blyg (link text can leak titles)", () => {
 	it("refuses wikilinks to private, unpublished, and missing notes", () => {
 		for (const l of ["[[APUSH]]", "[[Sep 12, 2026]]", "[[Draft fragment]]", "[[Nowhere]]", "[[APUSH|a harmless label]]"]) {
 			expect(rules(check(note(`See ${l}.`)))).toEqual([3]);
@@ -155,12 +159,12 @@ describe("Rule 3: no links out of 7 - Blyg (link text can leak titles)", () => {
 	});
 });
 
-describe("Rule 4: images only from 7 - Blyg/media", () => {
+describe("Rule 4: images only from Blyg/media", () => {
 	it("refuses images from anywhere else", () => {
 		for (const l of ["![[class photo.jpg]]", "![](../6%20-%20Attachments/class%20photo.jpg)"]) {
 			const r = check(note(l, { kind: "thread" }));
 			expect(rules(r)).toEqual([4]);
-			expect(r.problems[0].message).toMatch(/only come from 7 - Blyg\/media/);
+			expect(r.problems[0].message).toMatch(/only come from Blyg\/media/);
 		}
 	});
 	it("holds media-folder images too until image publishing is built", () => {
@@ -292,15 +296,15 @@ describe("warnings for Obsidian-only formatting", () => {
 
 describe("titles", () => {
 	it("fragments take the note's name as a title, without adding it to the text", () => {
-		const r = check(note("A claim.", { path: "7 - Blyg/fragments/On contingency.md" }));
+		const r = check(note("A claim.", { path: "Blyg/fragments/On contingency.md" }));
 		expect(r.title).toBe("On contingency");
 		expect(r.publicMarkdown).toBe("A claim.");
 	});
 	it("threads get the title as a leading heading, unless they already start with one", () => {
-		const a = check(note("Body.", { kind: "thread", path: "7 - Blyg/threads/Turning points.md" }));
+		const a = check(note("Body.", { kind: "thread", path: "Blyg/threads/Turning points.md" }));
 		expect(a.publicMarkdown).toBe("# Turning points\n\nBody.");
 		expect(a.title).toBe("Turning points");
-		const b = check(note("## My own heading\n\nBody.", { kind: "thread", path: "7 - Blyg/threads/file name.md" }));
+		const b = check(note("## My own heading\n\nBody.", { kind: "thread", path: "Blyg/threads/file name.md" }));
 		expect(b.publicMarkdown).toBe("## My own heading\n\nBody.");
 		expect(b.title).toBe("My own heading");
 	});
@@ -310,12 +314,40 @@ describe("titles", () => {
 	});
 	it("titles are scanned like the text", () => {
 		const terms = parseDenylist("Springfield");
-		const r = check(note("Nothing here.", { path: "7 - Blyg/fragments/Notes from Springfield.md" }), terms);
+		const r = check(note("Nothing here.", { path: "Blyg/fragments/Notes from Springfield.md" }), terms);
 		expect(r.flags).toHaveLength(1);
 		expect(r.flags[0].excerpt).toMatch(/^Title:/);
 	});
 	it("refuses link syntax and over-long titles", () => {
 		expect(rules(check(note("x", { frontmatter: { blyg: "publish", blyg_kind: "fragment", blyg_title: "See [[APUSH]]" } })))).toEqual([3]);
 		expect(rules(check(note("x", { frontmatter: { blyg: "publish", blyg_kind: "fragment", blyg_title: "t".repeat(201) } })))).toEqual([7]);
+	});
+});
+
+describe("publish folder setting", () => {
+	it("accepts one top-level folder and rejects anything else", () => {
+		expect(folderProblem("Blyg")).toBeNull();
+		expect(folderProblem("7 - Blyg")).toBeNull();
+		for (const bad of ["", "  ", "a/b", ".hidden", " Blyg"]) expect(folderProblem(bad)).not.toBeNull();
+		expect(() => new PublishRoot("a/b")).toThrow();
+	});
+	it("a custom folder is the only thing publishable", () => {
+		const custom = new PublishRoot("7 - Blyg");
+		const v: VaultView = { ...vault, root: custom };
+		expect(rules(checkNote(note("x", { path: "Blyg/fragments/Test.md" }), v, NO_TERMS))).toEqual([1]);
+		expect(checkNote(note("x", { path: "7 - Blyg/fragments/Test.md" }), v, NO_TERMS).problems).toEqual([]);
+		expect(checkNote(note("x", { path: "Blyg/fragments/Test.md" }), vault, NO_TERMS).problems[0]?.message ?? "").toBe("");
+		expect(custom.stateDir).toBe("7 - Blyg/.blyg");
+	});
+});
+
+describe("name scan is optional", () => {
+	it("with the scan off, nothing is flagged", () => {
+		const r = checkNote(note("Email someone@example.com about the IEP."), vault, null);
+		expect(r.flags).toEqual([]);
+		expect(r.problems).toEqual([]);
+	});
+	it("with the scan on and no list, the built-in patterns still run", () => {
+		expect(checkNote(note("Email someone@example.com."), vault, NO_TERMS).flags).toHaveLength(1);
 	});
 });

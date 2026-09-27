@@ -4,7 +4,6 @@ import { ItemView, WorkspaceLeaf } from "obsidian";
 import { latestVersion } from "./core/ledger";
 import { plainTextFromHtml } from "./core/markdown";
 import type BlygPublisherPlugin from "./main";
-import { PUBLISH_ROOT } from "./safety/root";
 import type { NoteStatus } from "./status";
 
 export const VIEW_TYPE = "blyg-panel";
@@ -48,10 +47,10 @@ export class BlygPanel extends ItemView {
 			const card = this.card(root, "This note");
 			card.createEl("p").append(
 				createEl("b", { text: "This note is private. " }),
-				`Blyg Publisher can't publish anything outside ${PUBLISH_ROOT}.`,
+				`Blyg Publisher can't publish anything outside ${this.plugin.root.folder}.`,
 			);
 			this.button(card, "Promote a copy to Blyg…", () => this.plugin.promote(status.file));
-			card.createEl("p", { cls: "blyg-tiny", text: "Makes a new copy in 7 - Blyg for you to edit. The original stays private and untouched." });
+			card.createEl("p", { cls: "blyg-tiny", text: `Makes a new copy in ${this.plugin.root.folder} for you to edit. The original stays private and untouched.` });
 		} else if (status.state === "unmarked") {
 			const card = this.card(root, "This note");
 			card.createEl("p").append(createEl("b", { text: "Not marked for publishing. " }), "It stays private until you choose a kind.");
@@ -176,7 +175,7 @@ export class BlygPanel extends ItemView {
 		if (ctx.orphans.length) {
 			list.createEl("li", {
 				cls: "warn",
-				text: `${ctx.orphans.length} published item(s) have no note in 7 - Blyg (deleted or renamed outside Obsidian?). They stay public until withdrawn.`,
+				text: `${ctx.orphans.length} published item(s) have no note in ${this.plugin.root.folder} (deleted or renamed outside Obsidian?). They stay public until withdrawn.`,
 			});
 		}
 		const last = this.plugin.deploys.at(-1);

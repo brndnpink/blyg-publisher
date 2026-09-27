@@ -1,9 +1,10 @@
 {
   "id": "blyg-publisher",
   "name": "Blyg Publisher",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "minAppVersion": "1.7.2",
-  "description": "Publish a Blygger blyg from one folder of your vault to a static host.",
+  "description": "Publish a Blygger blyg (blogs × wikis × changelogs, on static files and RSS) from one folder of your vault to a static host. Local-first; desktop only.",
   "author": "Blyg Publisher contributors",
-  "isDesktopOnly": true
+  "isDesktopOnly": true,
+  "authorUrl": "https://github.com/brndnpink/blyg-publisher"
 }

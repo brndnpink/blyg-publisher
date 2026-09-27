@@ -3,7 +3,7 @@
 // caller supplies, so this module stays pure and testable.
 
 import { classifyLines } from "./clean";
-import { isInMediaDir, isInPublishRoot } from "./root";
+import type { PublishRoot } from "./root";
 
 export interface Problem {
 	rule: number;
@@ -13,20 +13,22 @@ export interface Problem {
 }
 
 export interface VaultView {
+	/** The one folder that can be published. */
+	root: PublishRoot;
 	/** Resolve an Obsidian link path from a source note to a vault path, or null if nothing matches. */
 	resolve(linkpath: string, sourcePath: string): string | null;
 	/** If the vault path is a published item, its id, kind, and public URL. */
 	published(path: string): { id: string; kind: "fragment" | "thread"; url: string } | null;
-	/** Notes inside 7 - Blyg whose name matches the link, for explaining ambiguous links. */
+	/** Notes inside the publish folder whose name matches the link, for explaining ambiguous links. */
 	sameNameInRoot?(linkpath: string): string[];
 }
 
-/** Hint for a link that resolved outside 7 - Blyg when a Blyg note has the same name. */
+/** Hint for a link that resolved outside the publish folder when a note inside it has the same name. */
 function ambiguityHint(vault: VaultView, path: string, embed: boolean): string {
 	const twins = vault.sameNameInRoot?.(path) ?? [];
 	if (!twins.length) return "";
 	const full = twins[0].replace(/\.md$/, "");
-	return ` A note in 7 - Blyg has the same name, but this link finds the private one. Link it by its full path instead: ${embed ? "!" : ""}[[${full}]]`;
+	return ` A note in ${vault.root.folder} has the same name, but this link finds the private one. Link it by its full path instead: ${embed ? "!" : ""}[[${full}]]`;
 }
 
 export interface LinkResult {
@@ -100,13 +102,13 @@ export function processLinks(markdown: string, kind: "fragment" | "thread", sour
 			const target = vault.resolve(path, sourcePath);
 			const label = `![[${own[1]}]]`;
 			if (target && IMAGE_EXT.test(target)) {
-				problems.push(imageProblem(target, n));
+				problems.push(imageProblem(vault, target, n));
 			} else if (kind === "fragment") {
 				problems.push({ rule: 2, line: n, message: `${label}: fragments can't embed other notes; make this a thread` });
 			} else if (!target) {
 				problems.push({ rule: 2, line: n, message: `${label}: no note by that name` });
-			} else if (!isInPublishRoot(target)) {
-				problems.push({ rule: 2, line: n, message: `${label}: embeds a private note from outside 7 - Blyg.${ambiguityHint(vault, path, true)}` });
+			} else if (!vault.root.contains(target)) {
+				problems.push({ rule: 2, line: n, message: `${label}: embeds a private note from outside ${vault.root.folder}.${ambiguityHint(vault, path, true)}` });
 			} else if (sub || alias) {
 				problems.push({ rule: 2, line: n, message: `${label}: embed the whole fragment (no #heading, ^block, or |alias)` });
 			} else {
@@ -143,7 +145,7 @@ export function processLinks(markdown: string, kind: "fragment" | "thread", sour
 					const { path, alias } = parseWiki(inner);
 					const target = vault.resolve(path, sourcePath);
 					if (bang) {
-						if (target && IMAGE_EXT.test(target)) problems.push(imageProblem(target, n));
+						if (target && IMAGE_EXT.test(target)) problems.push(imageProblem(vault, target, n));
 						else problems.push({ rule: 2, line: n, message: `${whole}: embeds must be on a line of their own, in a thread` });
 						return whole;
 					}
@@ -151,8 +153,8 @@ export function processLinks(markdown: string, kind: "fragment" | "thread", sour
 						problems.push({ rule: 3, line: n, message: `${whole}: links to a note that doesn't exist` });
 						return whole;
 					}
-					if (!isInPublishRoot(target)) {
-						problems.push({ rule: 3, line: n, message: `${whole}: links to a private note outside 7 - Blyg.${ambiguityHint(vault, path, false)}` });
+					if (!vault.root.contains(target)) {
+						problems.push({ rule: 3, line: n, message: `${whole}: links to a private note outside ${vault.root.folder}.${ambiguityHint(vault, path, false)}` });
 						return whole;
 					}
 					const pub = vault.published(target);
@@ -167,7 +169,7 @@ export function processLinks(markdown: string, kind: "fragment" | "thread", sour
 					if (SAFE_SCHEME.test(dest) || dest.startsWith("#")) return whole;
 					if (bang) {
 						const target = vault.resolve(decodeURI(dest), sourcePath);
-						problems.push(target ? imageProblem(target, n) : { rule: 4, line: n, message: `${whole}: image not found; images can only come from 7 - Blyg/media` });
+						problems.push(target ? imageProblem(vault, target, n) : { rule: 4, line: n, message: `${whole}: image not found; images can only come from ${vault.root.mediaDir}` });
 					} else {
 						problems.push({ rule: 3, line: n, message: `${whole}: only web (https) and email links can be published` });
 					}
@@ -182,8 +184,8 @@ export function processLinks(markdown: string, kind: "fragment" | "thread", sour
 	return { markdown: out.join("\n"), problems };
 }
 
-function imageProblem(target: string, line: number): Problem {
-	return isInMediaDir(target)
+function imageProblem(vault: VaultView, target: string, line: number): Problem {
+	return vault.root.inMedia(target)
 		? { rule: 4, line, message: `${target}: image publishing isn't built yet` }
-		: { rule: 4, line, message: `${target}: images can only come from 7 - Blyg/media` };
+		: { rule: 4, line, message: `${target}: images can only come from ${vault.root.mediaDir}` };
 }

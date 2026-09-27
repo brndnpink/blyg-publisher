@@ -2,7 +2,6 @@
 // the site was last updated and guards the one-time "start over" reset.
 
 import type { FileAdapter } from "./store";
-import { STATE_DIR } from "./safety/root";
 
 export interface DeployRecord {
 	at: string;
@@ -12,9 +11,9 @@ export interface DeployRecord {
 	files: number;
 }
 
-const PATH = `${STATE_DIR}/deploys.json`;
 
-export async function readDeploys(adapter: FileAdapter): Promise<DeployRecord[]> {
+export async function readDeploys(adapter: FileAdapter, stateDir: string): Promise<DeployRecord[]> {
+	const PATH = `${stateDir}/deploys.json`;
 	if (!(await adapter.exists(PATH))) return [];
 	try {
 		return JSON.parse(await adapter.read(PATH)) as DeployRecord[];
@@ -24,9 +23,10 @@ export async function readDeploys(adapter: FileAdapter): Promise<DeployRecord[]>
 	}
 }
 
-export async function recordDeploy(adapter: FileAdapter, rec: DeployRecord): Promise<void> {
-	const all = await readDeploys(adapter);
+export async function recordDeploy(adapter: FileAdapter, stateDir: string, rec: DeployRecord): Promise<void> {
+	const PATH = `${stateDir}/deploys.json`;
+	const all = await readDeploys(adapter, stateDir);
 	all.push(rec);
-	if (!(await adapter.exists(STATE_DIR))) await adapter.mkdir(STATE_DIR);
+	if (!(await adapter.exists(stateDir))) await adapter.mkdir(stateDir);
 	await adapter.write(PATH, JSON.stringify(all, null, 2) + "\n");
 }

@@ -2,6 +2,7 @@ import { App, PluginSettingTab, Setting } from "obsidian";
 import type { SiteConfig } from "./core/types";
 import { validateSite } from "./core/surfaces";
 import type BlygPublisherPlugin from "./main";
+import { DEFAULT_FOLDER, folderProblem } from "./safety/root";
 
 export interface BlygSettings {
 	/** Absolute URL of the blyg, ending in "/". */
@@ -10,7 +11,11 @@ export interface BlygSettings {
 	description: string;
 	authorName: string;
 	authorBio: string;
-	/** Absolute path (or ~/…) to the private name list, outside the vault. */
+	/** The one top-level folder that can be published. Chosen once at setup. */
+	publishFolder: string;
+	/** Optional name scan: flag listed names and email/phone/IEP/504 before publishing. Off by default. */
+	nameScan: boolean;
+	/** Optional private list for the name scan (absolute or ~/ path), kept outside the publish folder. */
 	denylistPath: string;
 	/** Cloudflare Pages project name. */
 	pagesProject: string;
@@ -29,6 +34,8 @@ export const DEFAULT_SETTINGS: BlygSettings = {
 	description: "",
 	authorName: "",
 	authorBio: "",
+	publishFolder: DEFAULT_FOLDER,
+	nameScan: false,
 	denylistPath: "",
 	pagesProject: "",
 	homeIntro: "",
@@ -62,9 +69,12 @@ export function settingsProblems(s: BlygSettings, version: string): string[] {
 	else out.push(...validateSite(siteConfig(s, version)).filter((p) => !/title|author/.test(p)).map((p) => `Web address: ${p}.`));
 	if (!s.title.trim()) out.push("Set a site title in Blyg Publisher settings.");
 	if (!s.authorName.trim()) out.push("Set an author name in Blyg Publisher settings.");
-	if (!s.denylistPath.trim()) out.push("Set the location of your private name list in Blyg Publisher settings.");
+	const folder = folderProblem(s.publishFolder);
+	if (folder) out.push(`${folder} Fix it in Blyg Publisher settings.`);
 	return out;
 }
+
+type StringKey = { [K in keyof BlygSettings]: BlygSettings[K] extends string ? K : never }[keyof BlygSettings];
 
 export class BlygSettingTab extends PluginSettingTab {
 	constructor(app: App, private plugin: BlygPublisherPlugin) {
@@ -75,7 +85,7 @@ export class BlygSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		const text = (name: string, desc: string, key: keyof BlygSettings, placeholder = "") =>
+		const text = (name: string, desc: string, key: StringKey, placeholder = "") =>
 			new Setting(containerEl)
 				.setName(name)
 				.setDesc(desc)
@@ -117,13 +127,25 @@ export class BlygSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl).setName("Safety").setHeading();
 		text(
-			"Private name list",
-			"A text file OUTSIDE this vault's 7 - Blyg folder, one name per line. Publishing is blocked if it can't be read.",
-			"denylistPath",
-			"~/path/to/denylist.txt",
+			"Publish folder",
+			"The ONE top-level folder that can be published; nothing outside it ever is. Your ledger lives in its .blyg subfolder, so set this once and leave it.",
+			"publishFolder",
+			DEFAULT_FOLDER,
 		);
 		new Setting(containerEl)
-			.setName("Publish folder")
-			.setDesc("Fixed: only notes in \"7 - Blyg\" can ever be published. This can't be changed here.");
+			.setName("Name scan")
+			.setDesc("Before publishing and deploying, flag email addresses, phone numbers, \"IEP\", \"504\", and any names on your private list. You confirm or fix each match.")
+			.addToggle((t) =>
+				t.setValue(this.plugin.settings.nameScan).onChange(async (v) => {
+					this.plugin.settings.nameScan = v;
+					await this.plugin.saveSettings();
+				}),
+			);
+		text(
+			"Private name list",
+			"Optional, used by the name scan: a text file outside the publish folder, one name per line. If set and unreadable, publishing is blocked.",
+			"denylistPath",
+			"~/path/to/names.txt",
+		);
 	}
 }

@@ -9,7 +9,7 @@ import { fetchLive } from "./deploy/live";
 import { obsidianGet } from "./deploy/net";
 import { BlygPanel, VIEW_TYPE } from "./panel";
 import { splitFrontmatter } from "./safety/clean";
-import { PUBLISH_ROOT } from "./safety/root";
+import { DEFAULT_FOLDER, folderProblem, PublishRoot } from "./safety/root";
 import { BlygSettingTab, DEFAULT_SETTINGS, type BlygSettings } from "./settings";
 import { loadContext, noteStatus, type Context, type NoteStatus } from "./status";
 import { LedgerStore } from "./store";
@@ -18,7 +18,6 @@ type Marked = Extract<NoteStatus, { state: "marked" }>;
 
 export default class BlygPublisherPlugin extends Plugin {
 	settings: BlygSettings = { ...DEFAULT_SETTINGS };
-	store!: LedgerStore;
 	context: Context | null = null;
 	status: NoteStatus = { state: "none" };
 	deploys: DeployRecord[] = [];
@@ -30,7 +29,6 @@ export default class BlygPublisherPlugin extends Plugin {
 
 	async onload() {
 		await this.loadSettings();
-		this.store = new LedgerStore(this.app.vault.adapter);
 		this.statusBar = this.addStatusBarItem();
 		this.statusBar.addClass("blyg-statusbar");
 		this.addSettingTab(new BlygSettingTab(this.app, this));
@@ -80,6 +78,15 @@ export default class BlygPublisherPlugin extends Plugin {
 		this.app.workspace.onLayoutReady(() => void this.refresh());
 	}
 
+	/** The publish folder from settings (the default if the setting is invalid; publishing is blocked then anyway). */
+	get root(): PublishRoot {
+		return new PublishRoot(folderProblem(this.settings.publishFolder) ? DEFAULT_FOLDER : this.settings.publishFolder);
+	}
+
+	get store(): LedgerStore {
+		return new LedgerStore(this.app.vault.adapter, this.root.stateDir);
+	}
+
 	async loadSettings() {
 		this.settings = { ...DEFAULT_SETTINGS, ...((await this.loadData()) as Partial<BlygSettings> | null) };
 	}
@@ -101,8 +108,9 @@ export default class BlygPublisherPlugin extends Plugin {
 		while (this.refreshing) await this.refreshing;
 		this.refreshing = (async () => {
 			try {
-				this.context = await loadContext(this.app, this.store, this.settings, this.manifest.version);
-				this.deploys = await readDeploys(this.app.vault.adapter);
+				const root = this.root;
+				this.context = await loadContext(this.app, this.store, this.settings, this.manifest.version, root);
+				this.deploys = await readDeploys(this.app.vault.adapter, root.stateDir);
 				const file = this.currentFile && this.app.vault.getAbstractFileByPath(this.currentFile.path) instanceof TFile ? this.currentFile : null;
 				this.status = await noteStatus(this.app, file, this.context);
 			} catch (e) {
@@ -150,7 +158,7 @@ export default class BlygPublisherPlugin extends Plugin {
 		await this.refresh();
 		const s = this.status;
 		if (s.state === "none") notice("Open a note first.");
-		else if (s.state === "private") notice(`This note is outside ${PUBLISH_ROOT} and can't be published.`);
+		else if (s.state === "private") notice(`This note is outside ${this.root.folder} and can't be published.`);
 		else if (s.state === "unmarked") notice("This note isn't marked for publishing yet.");
 		return s.state === "marked" ? s : null;
 	}
@@ -288,11 +296,12 @@ export default class BlygPublisherPlugin extends Plugin {
 				await this.refresh();
 			},
 			count,
+			this.root.folder,
 		).open();
 	}
 
 	async markNote(file: TFile, kind: "fragment" | "thread") {
-		if (!file.path.startsWith(`${PUBLISH_ROOT}/`)) return notice(`Only notes in ${PUBLISH_ROOT} can be marked.`);
+		if (!this.root.isPublishableNote(file.path)) return notice(`Only notes in ${this.root.folder} can be marked.`);
 		await this.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
 			fm.blyg = "publish";
 			fm.blyg_kind = kind;
@@ -300,12 +309,12 @@ export default class BlygPublisherPlugin extends Plugin {
 		await this.refresh();
 	}
 
-	/** Copy a private note into 7 - Blyg, leaving the original untouched and its properties behind. */
+	/** Copy a private note into the publish folder, leaving the original untouched and its properties behind. */
 	promote(file: TFile) {
 		new PromoteModal(
 			this.app,
 			async (kind) => {
-				const folder = normalizePath(`${PUBLISH_ROOT}/${kind}s`);
+				const folder = normalizePath(`${this.root.folder}/${kind}s`);
 				if (!this.app.vault.getAbstractFileByPath(folder)) await this.app.vault.createFolder(folder);
 				let path = normalizePath(`${folder}/${file.basename}.md`);
 				for (let i = 2; this.app.vault.getAbstractFileByPath(path); i++) path = normalizePath(`${folder}/${file.basename} ${i}.md`);
@@ -321,6 +330,7 @@ export default class BlygPublisherPlugin extends Plugin {
 				);
 			},
 			file.basename,
+			this.root.folder,
 		).open();
 	}
 

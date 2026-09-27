@@ -100,7 +100,7 @@ export function makePlanner(plugin: BlygPublisherPlugin): Planner {
 				comparison,
 				flags: ctx.denylist ? scanSite(ledger, ctx.denylist) : [],
 				fileCount: files?.size ?? 0,
-				previousDeploys: (await readDeploys(plugin.app.vault.adapter)).length,
+				previousDeploys: (await readDeploys(plugin.app.vault.adapter, plugin.root.stateDir)).length,
 			};
 		},
 
@@ -129,7 +129,7 @@ export function makePlanner(plugin: BlygPublisherPlugin): Planner {
 							: undefined;
 				return { ok: false, hint };
 			}
-			await recordDeploy(plugin.app.vault.adapter, {
+			await recordDeploy(plugin.app.vault.adapter, plugin.root.stateDir, {
 				at: toIso(),
 				origin,
 				url: res.url,

@@ -229,13 +229,14 @@ export class PromoteModal extends Modal {
 		app: App,
 		private onChoose: (kind: "fragment" | "thread") => void,
 		private name: string,
+		private folder: string,
 	) {
 		super(app);
 	}
 
 	onOpen() {
 		this.modalEl.addClass("blyg-modal");
-		this.setTitle(`Copy "${this.name}" into 7 - Blyg`);
+		this.setTitle(`Copy "${this.name}" into ${this.folder}`);
 		this.contentEl.createEl("p", {
 			text: "This makes a new copy for you to edit for the public. The original stays private and untouched. The copy's properties (tags, aliases) are left behind, and it isn't marked for publishing until you choose.",
 		});
@@ -371,6 +372,7 @@ export class ResetModal extends Modal {
 		app: App,
 		private onConfirm: () => Promise<void>,
 		private count: number,
+		private folder: string,
 	) {
 		super(app);
 	}
@@ -379,7 +381,7 @@ export class ResetModal extends Modal {
 		this.modalEl.addClass("blyg-modal");
 		this.setTitle("Start over before the first deploy");
 		this.contentEl.createEl("p", {
-			text: `This clears the ledger's ${this.count} item(s) and removes blyg_id from notes in 7 - Blyg, so everything can be published fresh as v1. Your notes and their text are not changed. The old ledger is kept in the backups folder.`,
+			text: `This clears the ledger's ${this.count} item(s) and removes blyg_id from notes in ${this.folder}, so everything can be published fresh as v1. Your notes and their text are not changed. The old ledger is kept in the backups folder.`,
 		});
 		this.contentEl.createEl("p", { cls: "blyg-tiny", text: "Only possible because nothing has been deployed yet. After the first deploy, published items can only be withdrawn." });
 		let btn: ButtonComponent;

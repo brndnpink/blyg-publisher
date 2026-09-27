@@ -1,11 +1,10 @@
-// Ledger persistence: 7 - Blyg/.blyg/ledger.json, with a backup before every
+// Ledger persistence: <publish folder>/.blyg/ledger.json, with a backup before every
 // write, a read-back check after it, and refusal of any change that would
 // break a protocol promise. Pure except for the injected file adapter, so it
 // can be tested without Obsidian.
 
 import { checkLedger, checkTransition, emptyLedger } from "./core/ledger";
 import type { Ledger, Result } from "./core/types";
-import { STATE_DIR } from "./safety/root";
 
 export interface FileAdapter {
 	exists(path: string): Promise<boolean>;
@@ -24,7 +23,7 @@ export class LedgerStore {
 
 	constructor(
 		private adapter: FileAdapter,
-		private dir = STATE_DIR,
+		private dir: string,
 		private now: () => Date = () => new Date(),
 	) {
 		this.path = `${dir}/ledger.json`;

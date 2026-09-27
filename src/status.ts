@@ -1,20 +1,22 @@
 // Everything the panel, status bar, and publish window need to know about a
 // note, computed in one place.
 
-import type { App, TFile } from "obsidian";
+import { TFolder, type App, type TFile } from "obsidian";
 import { latestVersion } from "./core/ledger";
 import type { Ledger, LedgerItem, VersionRecord } from "./core/types";
 import { checkNote, type CheckResult } from "./safety/check";
-import { isInPublishRoot, isPublishableNotePath } from "./safety/root";
+import type { PublishRoot } from "./safety/root";
 import type { Denylist } from "./safety/scan";
 import { settingsProblems, type BlygSettings } from "./settings";
 import type { LedgerStore } from "./store";
 import { buildIndex, makeVaultView, readDenylist, type BlygIndex } from "./vault";
 
 export interface Context {
+	root: PublishRoot;
 	ledger: Ledger;
 	index: BlygIndex;
 	denylist: Denylist | null;
+	/** Null when the optional name scan is off. */
 	/** Problems that block all publishing, not just one note. */
 	global: string[];
 	/** Published items no note points to (e.g. a note was deleted). */
@@ -22,8 +24,11 @@ export interface Context {
 	origin: string;
 }
 
-export async function loadContext(app: App, store: LedgerStore, settings: BlygSettings, version: string): Promise<Context> {
+export async function loadContext(app: App, store: LedgerStore, settings: BlygSettings, version: string, root: PublishRoot): Promise<Context> {
 	const global = settingsProblems(settings, version);
+	if (!(app.vault.getAbstractFileByPath(root.folder) instanceof TFolder)) {
+		global.push(`Create a folder named "${root.folder}" at the top of your vault. Only notes in it can be published.`);
+	}
 	let ledger: Ledger = { schema: 1, items: {} };
 	try {
 		ledger = await store.load();
@@ -32,20 +37,23 @@ export async function loadContext(app: App, store: LedgerStore, settings: BlygSe
 	}
 	const conflicts = await store.conflicts();
 	if (conflicts.length) {
-		global.push(`Dropbox sync conflict in the ledger folder (${conflicts.map((c) => c.split("/").pop()).join(", ")}). Resolve it before publishing.`);
+		global.push(`Sync conflict in the ledger folder (${conflicts.map((c) => c.split("/").pop()).join(", ")}). Resolve it before publishing.`);
 	}
 	let denylist: Denylist | null = null;
-	if (settings.denylistPath.trim()) {
-		try {
-			denylist = readDenylist(settings.denylistPath);
-		} catch (e) {
-			global.push((e as Error).message);
+	if (settings.nameScan) {
+		denylist = { terms: [] };
+		if (settings.denylistPath.trim()) {
+			try {
+				denylist = readDenylist(settings.denylistPath, root);
+			} catch (e) {
+				global.push((e as Error).message);
+			}
 		}
 	}
-	const index = buildIndex(app);
+	const index = buildIndex(app, root);
 	const orphans = Object.keys(ledger.items).filter((id) => !index.byId.has(id));
 	const origin = settings.origin.trim() && !settings.origin.trim().endsWith("/") ? `${settings.origin.trim()}/` : settings.origin.trim();
-	return { ledger, index, denylist, global, orphans, origin };
+	return { root, ledger, index, denylist, global, orphans, origin };
 }
 
 export type NoteStatus =
@@ -69,13 +77,13 @@ export type NoteStatus =
 
 export async function noteStatus(app: App, file: TFile | null, ctx: Context): Promise<NoteStatus> {
 	if (!file || file.extension !== "md") return { state: "none" };
-	if (!isInPublishRoot(file.path) || !isPublishableNotePath(file.path)) return { state: "private", file };
+	if (!ctx.root.isPublishableNote(file.path)) return { state: "private", file };
 	const fm = app.metadataCache.getFileCache(file)?.frontmatter;
 	if (fm?.blyg !== "publish") return { state: "unmarked", file };
 
 	const text = await app.vault.cachedRead(file);
-	const view = makeVaultView(app, ctx.index, ctx.ledger, ctx.origin);
-	const check = checkNote({ path: file.path, basename: file.basename, text, frontmatter: fm }, view, ctx.denylist ?? { terms: [] });
+	const view = makeVaultView(app, ctx.index, ctx.ledger, ctx.origin, ctx.root);
+	const check = checkNote({ path: file.path, basename: file.basename, text, frontmatter: fm }, view, ctx.denylist);
 
 	const blockers = [...ctx.global, ...check.problems.map((p) => (p.line ? `Line ${p.line}: ${p.message}` : p.message))];
 	const item = check.id ? (ctx.ledger.items[check.id] ?? null) : null;

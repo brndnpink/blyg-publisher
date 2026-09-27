@@ -18,3 +18,5 @@ fixtures/live/
 
 # Personal paths for local scripts
 local.config.json
+
+.DS_Store

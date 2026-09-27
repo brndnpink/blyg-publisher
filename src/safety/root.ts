@@ -1,31 +1,51 @@
-// The publish-root lock (security rule 1). Pure; no Obsidian imports.
+// The publish-folder lock (security rule 1). Pure; no Obsidian imports.
+//
+// Exactly one top-level folder can ever be published. It's chosen once at
+// setup (default "Blyg"); nothing outside it is ever read for publishing.
 
-/**
- * The only folder this plugin may ever publish from. Deliberately a constant,
- * not a setting: widening it should take a code change, not a click.
- */
-export const PUBLISH_ROOT = "7 - Blyg";
-
-/** Only images from here can be published (rule 4). */
-export const MEDIA_DIR = `${PUBLISH_ROOT}/media`;
-
-/** Plugin-managed state; never publishable. */
-export const STATE_DIR = `${PUBLISH_ROOT}/.blyg`;
+export const DEFAULT_FOLDER = "Blyg";
 
 function hasBadSegment(path: string): boolean {
 	return path.split("/").some((seg) => seg === "" || seg === "." || seg === "..");
 }
 
-/** True only for a vault-relative path strictly inside PUBLISH_ROOT, with no traversal. */
-export function isInPublishRoot(path: string): boolean {
-	return path.startsWith(`${PUBLISH_ROOT}/`) && !hasBadSegment(path);
+/** Why a folder name can't be the publish folder, or null if it's fine. */
+export function folderProblem(name: string): string | null {
+	const n = name.trim();
+	if (!n) return "The publish folder name is empty.";
+	if (n.includes("/") || n.includes("\\")) return "The publish folder must be a single top-level folder (no slashes).";
+	if (n.startsWith(".")) return "The publish folder can't be a hidden folder.";
+	if (n !== name) return "The publish folder name has leading or trailing spaces.";
+	return null;
 }
 
-/** A note that could be published: Markdown, inside the root, outside plugin state. */
-export function isPublishableNotePath(path: string): boolean {
-	return isInPublishRoot(path) && path.endsWith(".md") && !path.startsWith(`${STATE_DIR}/`);
-}
+export class PublishRoot {
+	constructor(readonly folder: string = DEFAULT_FOLDER) {
+		const problem = folderProblem(folder);
+		if (problem) throw new Error(problem);
+	}
 
-export function isInMediaDir(path: string): boolean {
-	return path.startsWith(`${MEDIA_DIR}/`) && !hasBadSegment(path);
+	/** Plugin-managed state (ledger, backups, deploy log); never publishable. */
+	get stateDir(): string {
+		return `${this.folder}/.blyg`;
+	}
+
+	/** Only images from here can be published (rule 4). */
+	get mediaDir(): string {
+		return `${this.folder}/media`;
+	}
+
+	/** True only for a vault-relative path strictly inside the folder, with no traversal. */
+	contains(path: string): boolean {
+		return path.startsWith(`${this.folder}/`) && !hasBadSegment(path);
+	}
+
+	/** A note that could be published: Markdown, inside the folder, outside plugin state. */
+	isPublishableNote(path: string): boolean {
+		return this.contains(path) && path.endsWith(".md") && !path.startsWith(`${this.stateDir}/`);
+	}
+
+	inMedia(path: string): boolean {
+		return path.startsWith(`${this.mediaDir}/`) && !hasBadSegment(path);
+	}
 }

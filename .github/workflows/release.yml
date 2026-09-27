@@ -1,0 +1,49 @@
+# Builds and publishes a release when a version tag (e.g. 0.1.0) is pushed.
+# Assets: main.js, manifest.json, styles.css (the three files Obsidian loads)
+# and blyg-publisher.zip (the same files in a ready-to-drop folder).
+name: Release
+
+on:
+  push:
+    tags:
+      - "*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Check the tag matches manifest.json
+        run: |
+          test "$GITHUB_REF_NAME" = "$(node -p "require('./manifest.json').version")" \
+            || { echo "Tag $GITHUB_REF_NAME doesn't match manifest.json version"; exit 1; }
+
+      - name: Type-check, test, build
+        run: npm run build
+
+      - name: Package
+        run: |
+          mkdir -p dist/blyg-publisher
+          cp main.js manifest.json styles.css dist/blyg-publisher/
+          (cd dist && zip -r blyg-publisher.zip blyg-publisher)
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            main.js manifest.json styles.css dist/blyg-publisher.zip \
+            --title "Blyg Publisher $GITHUB_REF_NAME" \
+            --notes "Install: copy main.js, manifest.json, and styles.css into <vault>/.obsidian/plugins/blyg-publisher/ (or unzip blyg-publisher.zip into <vault>/.obsidian/plugins/). Or run scripts/install.sh. See README.md and AGENTS.md."

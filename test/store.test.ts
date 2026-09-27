@@ -37,7 +37,7 @@ class MemoryAdapter implements FileAdapter {
 function setup() {
 	const adapter = new MemoryAdapter();
 	let t = Date.parse("2026-09-27T12:00:00Z");
-	const store = new LedgerStore(adapter, "7 - Blyg/.blyg", () => new Date((t += 1000)));
+	const store = new LedgerStore(adapter, "Blyg/.blyg", () => new Date((t += 1000)));
 	return { adapter, store, t: clock(), ids: idMaker() };
 }
 
@@ -47,7 +47,7 @@ describe("LedgerStore", () => {
 		expect(await store.load()).toEqual(emptyLedger());
 		const r = await store.update((l) => publish(l, { kind: "fragment", content_md: "hello" }, t(), ids));
 		expect(r.ok).toBe(true);
-		const saved = JSON.parse(adapter.files.get("7 - Blyg/.blyg/ledger.json")!) as Ledger;
+		const saved = JSON.parse(adapter.files.get("Blyg/.blyg/ledger.json")!) as Ledger;
 		expect(Object.keys(saved.items)).toHaveLength(1);
 	});
 
@@ -58,7 +58,7 @@ describe("LedgerStore", () => {
 		for (let i = 2; i <= 40; i++) {
 			await store.update((l) => publish(l, { id: first.id, kind: "fragment", content_md: `v${i}` }, t()));
 		}
-		const { files } = await adapter.list("7 - Blyg/.blyg/backups");
+		const { files } = await adapter.list("Blyg/.blyg/backups");
 		expect(files).toHaveLength(30);
 		const newest = JSON.parse(adapter.files.get(files.sort().at(-1)!)!) as Ledger;
 		expect(newest.items[first.id].versions).toHaveLength(39);
@@ -69,7 +69,7 @@ describe("LedgerStore", () => {
 		// Simulate another Mac writing a ledger via Dropbox.
 		const other = await publish(emptyLedger(), { kind: "fragment", content_md: "from the other Mac" }, t(), ids);
 		if (!other.ok) throw new Error();
-		adapter.files.set("7 - Blyg/.blyg/ledger.json", serialize(other.ledger));
+		adapter.files.set("Blyg/.blyg/ledger.json", serialize(other.ledger));
 		const r = await store.update((l) => publish(l, { kind: "fragment", content_md: "from this Mac" }, t(), ids));
 		if (!r.ok) throw new Error();
 		expect(Object.keys((await store.load()).items)).toHaveLength(2);
@@ -78,12 +78,12 @@ describe("LedgerStore", () => {
 	it("refuses to publish while a Dropbox conflicted copy exists", async () => {
 		const { adapter, store, t, ids } = setup();
 		await store.update((l) => publish(l, { kind: "fragment", content_md: "x" }, t(), ids));
-		adapter.files.set("7 - Blyg/.blyg/ledger (Alex's conflicted copy 2026-09-27).json", "{}");
+		adapter.files.set("Blyg/.blyg/ledger (Alex's conflicted copy 2026-09-27).json", "{}");
 		const r = await store.update((l) => publish(l, { kind: "fragment", content_md: "y" }, t(), ids));
 		expect(r.ok).toBe(false);
 		expect(!r.ok && r.errors[0]).toMatch(/conflict/i);
-		adapter.files.delete("7 - Blyg/.blyg/ledger (Alex's conflicted copy 2026-09-27).json");
-		adapter.files.set("7 - Blyg/.blyg/ledger 2.json", "{}");
+		adapter.files.delete("Blyg/.blyg/ledger (Alex's conflicted copy 2026-09-27).json");
+		adapter.files.set("Blyg/.blyg/ledger 2.json", "{}");
 		expect((await store.conflicts()).length).toBe(1);
 	});
 
@@ -92,19 +92,19 @@ describe("LedgerStore", () => {
 		const a = await store.update((l) => publish(l, { kind: "fragment", content_md: "x" }, t(), ids));
 		if (!a.ok) throw new Error();
 		await store.update((l) => pin(l, a.id, 1));
-		const before = adapter.files.get("7 - Blyg/.blyg/ledger.json");
+		const before = adapter.files.get("Blyg/.blyg/ledger.json");
 		const r = await store.update((l) => {
 			const bad = structuredClone(l);
 			delete bad.items[a.id].versions[0].pinned; // an "unpin"
 			return { ok: true, ledger: bad };
 		});
 		expect(r.ok).toBe(false);
-		expect(adapter.files.get("7 - Blyg/.blyg/ledger.json")).toBe(before);
+		expect(adapter.files.get("Blyg/.blyg/ledger.json")).toBe(before);
 	});
 
 	it("refuses to load a damaged ledger", async () => {
 		const { adapter, store } = setup();
-		adapter.files.set("7 - Blyg/.blyg/ledger.json", JSON.stringify({ schema: 1, items: { x: { id: "x", authored: "fragment", created: "", versions: [] } } }));
+		adapter.files.set("Blyg/.blyg/ledger.json", JSON.stringify({ schema: 1, items: { x: { id: "x", authored: "fragment", created: "", versions: [] } } }));
 		await expect(store.load()).rejects.toThrow(/damaged/);
 	});
 

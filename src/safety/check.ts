@@ -5,11 +5,10 @@
 import { isValidId } from "../core/util";
 import { classifyLines, splitFrontmatter, stripHidden } from "./clean";
 import { processLinks, type Problem, type VaultView } from "./links";
-import { isPublishableNotePath } from "./root";
 import { scan, type Denylist, type Flag } from "./scan";
 
 export interface NoteInput {
-	/** Vault-relative path, e.g. "7 - Blyg/fragments/Some note.md". */
+	/** Vault-relative path, e.g. "Blyg/fragments/Some note.md". */
 	path: string;
 	/** The note's name as Obsidian shows it (filename without .md). */
 	basename?: string;
@@ -35,14 +34,15 @@ export interface CheckResult {
 	warnings: string[];
 }
 
-export function checkNote(note: NoteInput, vault: VaultView, denylist: Denylist): CheckResult {
+/** `denylist` null means the optional name scan is off. */
+export function checkNote(note: NoteInput, vault: VaultView, denylist: Denylist | null): CheckResult {
 	const problems: Problem[] = [];
 	const warnings: string[] = [];
 	const fm = note.frontmatter ?? {};
 
 	// Rule 1: location and opt-in.
-	if (!isPublishableNotePath(note.path)) {
-		problems.push({ rule: 1, message: "This note is outside 7 - Blyg. Only notes in that folder can be published." });
+	if (!vault.root.isPublishableNote(note.path)) {
+		problems.push({ rule: 1, message: `This note is outside ${vault.root.folder}. Only notes in that folder can be published.` });
 		return { kind: null, id: null, publicMarkdown: "", title: "", problems, flags: [], warnings };
 	}
 	if (fm.blyg !== "publish") {
@@ -84,7 +84,9 @@ export function checkNote(note: NoteInput, vault: VaultView, denylist: Denylist)
 	if (title.length > 200) problems.push({ rule: 7, message: "The title is over 200 characters. Set a shorter blyg_title property." });
 
 	// Rule 6: scan the title and the text.
-	const flags = [...scan(title, denylist).map((f) => ({ ...f, line: 0, excerpt: `Title: ${f.excerpt}` })), ...scan(markdown, denylist)];
+	const flags = denylist
+		? [...scan(title, denylist).map((f) => ({ ...f, line: 0, excerpt: `Title: ${f.excerpt}` })), ...scan(markdown, denylist)]
+		: [];
 
 	if (links.markdown.trim() === "") problems.push({ rule: 7, message: "Nothing to publish: the note is empty after cleaning." });
 	warnings.push(...syntaxWarnings(markdown));

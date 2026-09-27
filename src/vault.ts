@@ -9,7 +9,7 @@ import { pagePath } from "./core/surfaces";
 import type { Ledger } from "./core/types";
 import { isValidId } from "./core/util";
 import type { VaultView } from "./safety/links";
-import { isPublishableNotePath } from "./safety/root";
+import type { PublishRoot } from "./safety/root";
 import { parseDenylist, type Denylist } from "./safety/scan";
 
 export interface BlygIndex {
@@ -19,11 +19,11 @@ export interface BlygIndex {
 }
 
 /** Scan notes in the publish folder for blyg_id properties. */
-export function buildIndex(app: App): BlygIndex {
+export function buildIndex(app: App, root: PublishRoot): BlygIndex {
 	const byId = new Map<string, TFile[]>();
 	const byPath = new Map<string, string>();
 	for (const file of app.vault.getMarkdownFiles()) {
-		if (!isPublishableNotePath(file.path)) continue;
+		if (!root.isPublishableNote(file.path)) continue;
 		const id = app.metadataCache.getFileCache(file)?.frontmatter?.blyg_id;
 		if (typeof id !== "string" || !isValidId(id)) continue;
 		byPath.set(file.path, id);
@@ -32,8 +32,9 @@ export function buildIndex(app: App): BlygIndex {
 	return { byId, byPath };
 }
 
-export function makeVaultView(app: App, index: BlygIndex, ledger: Ledger, origin: string): VaultView {
+export function makeVaultView(app: App, index: BlygIndex, ledger: Ledger, origin: string, root: PublishRoot): VaultView {
 	return {
+		root,
 		resolve(linkpath, sourcePath) {
 			return app.metadataCache.getFirstLinkpathDest(linkpath, sourcePath)?.path ?? null;
 		},
@@ -48,7 +49,7 @@ export function makeVaultView(app: App, index: BlygIndex, ledger: Ledger, origin
 			const name = linkpath.split("/").pop()!.replace(/\.md$/, "").toLowerCase();
 			return app.vault
 				.getMarkdownFiles()
-				.filter((f) => isPublishableNotePath(f.path) && f.basename.toLowerCase() === name)
+				.filter((f) => root.isPublishableNote(f.path) && f.basename.toLowerCase() === name)
 				.map((f) => f.path);
 		},
 	};
@@ -59,10 +60,10 @@ export function expandHome(path: string): string {
 }
 
 /** Read the private name list. Throws with a plain-language message if it can't. */
-export function readDenylist(path: string): Denylist {
+export function readDenylist(path: string, root: PublishRoot): Denylist {
 	const full = expandHome(path.trim());
-	if (/(^|\/)7 - Blyg(\/|$)/.test(full)) {
-		throw new Error("The private name list must not live inside the 7 - Blyg folder.");
+	if (full.split("/").includes(root.folder) && full.includes(`/${root.folder}/`)) {
+		throw new Error(`The private name list must not live inside the ${root.folder} folder.`);
 	}
 	try {
 		return parseDenylist(readFileSync(full, "utf8"));

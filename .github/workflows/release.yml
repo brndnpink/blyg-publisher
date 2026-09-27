@@ -22,9 +22,19 @@ jobs:
           node-version: 24
           cache: npm
 
-      # npm ci rejects this lockfile on Linux: npm 11 on macOS writes some
-      # Linux/Windows-only optional entries without versions. npm install
-      # repairs them and still follows the lockfile's pinned versions.
+      # npm 11 on macOS writes some Linux/Windows-only optional lockfile
+      # entries without a version, which npm on Linux rejects ("Invalid
+      # Version"). Drop those entries; npm then resolves the right
+      # platform packages itself. Everything else stays pinned.
+      - name: Repair lockfile for Linux
+        run: |
+          node -e '
+            const fs = require("fs");
+            const l = JSON.parse(fs.readFileSync("package-lock.json", "utf8"));
+            for (const [k, v] of Object.entries(l.packages)) if (k && !v.version && !v.link) { delete l.packages[k]; console.log("dropped", k); }
+            fs.writeFileSync("package-lock.json", JSON.stringify(l, null, 2) + "\n");
+          '
+
       - name: Install
         run: npm install --no-audit --no-fund
 
